@@ -36,7 +36,7 @@ Before you can chat, you need to download an AI model:
 | `deepseek-r1:8b` | ~4.9 GB | Advanced reasoning and coding |
 | `qwen3:32b` | ~20 GB | Near-frontier quality, rivals GPT-4 |
 
-**Recommendation:** Start with `llama3.2` — it's fast and works on most hardware.
+**Recommendation:** Start with `qwen3:4b` — it's fast, fits on most hardware, and rivals much larger models.
 
 ### 4. Start Chatting!
 

@@ -240,6 +240,22 @@ fi
 
 ok "Docker is installed and running"
 
+# ── Docker Desktop memory check (macOS) ──────────────
+if [[ "$OSTYPE" == "darwin"* ]]; then
+  DOCKER_MEM_BYTES=$(docker info --format '{{.MemTotal}}' 2>/dev/null || echo 0)
+  DOCKER_MEM_GB=$(( DOCKER_MEM_BYTES / 1073741824 ))
+  SYSTEM_MEM_BYTES=$(sysctl -n hw.memsize 2>/dev/null || echo 0)
+  SYSTEM_MEM_GB=$(( SYSTEM_MEM_BYTES / 1073741824 ))
+
+  if [ "${DOCKER_MEM_GB}" -gt 0 ] && [ "${DOCKER_MEM_GB}" -lt "$(( SYSTEM_MEM_GB - 2 ))" ]; then
+    warn "Docker Desktop is only allocated ${DOCKER_MEM_GB} GB of your ${SYSTEM_MEM_GB} GB RAM."
+    warn "For best AI performance, increase Docker memory:"
+    warn "  Docker Desktop → Settings → Resources → Memory → set to ${SYSTEM_MEM_GB} GB"
+    warn "  Then click 'Apply & restart' and re-run this installer."
+    echo ""
+  fi
+fi
+
 # ── Step 2: Detect hardware ────────────────────────────
 detect_hardware
 
@@ -269,7 +285,22 @@ fi
 
 # ── Step 7: Start container ────────────────────────────
 info "Starting AI server on port ${WEBUI_PORT}..."
+
+# Enable NVIDIA GPU passthrough if available
+GPU_FLAGS=""
+if [ "${GPU_TYPE}" = "nvidia" ]; then
+  if docker info 2>/dev/null | grep -q "nvidia"; then
+    GPU_FLAGS="--gpus all"
+    ok "NVIDIA GPU detected — enabling GPU acceleration"
+  else
+    warn "NVIDIA GPU found but Docker GPU support not configured."
+    warn "Install nvidia-container-toolkit for GPU acceleration."
+    warn "Continuing with CPU-only mode."
+  fi
+fi
+
 docker run -d \
+  ${GPU_FLAGS} \
   -p "${WEBUI_PORT}:8080" \
   -v joes-ai-ollama:/root/.ollama \
   -v joes-ai-webui:/app/backend/data \

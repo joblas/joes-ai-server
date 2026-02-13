@@ -182,10 +182,10 @@ services:
     container_name: watchtower
     restart: unless-stopped
     environment:
+      - WATCHTOWER_MONITOR_ONLY=true
       - WATCHTOWER_CLEANUP=true
       - WATCHTOWER_SCHEDULE=0 0 4 * * *
-      - WATCHTOWER_ROLLING_RESTART=true
-      - WATCHTOWER_INCLUDE_RESTARTING=true
+      - WATCHTOWER_NOTIFICATIONS=shoutrrr
       - WATCHTOWER_LOG_FORMAT=pretty
       - DOCKER_API_VERSION=1.44
     volumes:
@@ -395,11 +395,11 @@ PUBLIC_IP=$(curl -sf https://ifconfig.me || echo "YOUR_SERVER_IP")
 info "Detecting VPS hardware and selecting optimal AI models..."
 
 # ── Detect RAM ──
+OS_OVERHEAD_GB=4
 TOTAL_RAM_KB=$(grep MemTotal /proc/meminfo 2>/dev/null | awk '{print $2}' || echo 0)
 TOTAL_RAM_GB=$(( TOTAL_RAM_KB / 1048576 ))
 AVAILABLE_RAM_GB=$(( TOTAL_RAM_GB - OS_OVERHEAD_GB ))
 if [ "$AVAILABLE_RAM_GB" -lt 1 ]; then AVAILABLE_RAM_GB=1; fi
-OS_OVERHEAD_GB=4
 
 # ── Detect CPU ──
 CPU_CORES=$(nproc 2>/dev/null || echo "?")

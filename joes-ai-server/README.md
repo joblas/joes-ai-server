@@ -54,12 +54,12 @@ Then visit **https://ai.yourclient.com** once DNS propagates.
 ## What's Included
 
 ### Core Stack
-- **[Ollama](https://ollama.com)** — Run LLMs locally (Llama 3.2, Mistral, Phi-3, DeepSeek, etc.)
+- **[Ollama](https://ollama.com)** — Run LLMs locally (Qwen3, Gemma3, DeepSeek-R1, etc.)
 - **[Open WebUI](https://docs.openwebui.com)** — Beautiful ChatGPT-style interface with RAG, multi-user, model management
 
 ### VPS Extras
 - **[Caddy](https://caddyserver.com)** — Automatic HTTPS with Let's Encrypt
-- **[Watchtower](https://github.com/nickfedor/watchtower)** — Auto-updates all containers (monitor-only mode by default)
+- **[Watchtower](https://github.com/containrrr/watchtower)** — Container update monitoring (monitor-only by default, manual approval)
 - **Health check endpoint** — Simple uptime monitoring
 - **Automated backups** — Daily volume snapshots with 7-day retention
 
@@ -119,7 +119,7 @@ docker compose logs -f open-webui
 docker compose pull && docker compose up -d
 
 # Pull a new model
-docker exec ollama ollama pull llama3.2
+docker exec ollama ollama pull qwen3:4b
 
 # List downloaded models
 docker exec ollama ollama list
@@ -140,20 +140,27 @@ joes-ai-server/
 ├── install-local.sh          # One-liner for Mac / Linux
 ├── install-local.ps1         # One-liner for Windows (PowerShell)
 ├── install-vps.sh            # One-liner for VPS deployment
+├── uninstall-local.sh        # Clean uninstall for Mac / Linux
+├── uninstall-local.ps1       # Clean uninstall for Windows
+├── uninstall-vps.sh          # Clean uninstall for VPS
 ├── configs/
-│   ├── docker-compose.yml    # Full stack (Ollama + WebUI + Caddy + Watchtower)
 │   ├── docker-compose.local.yml  # Simplified local-only stack
-│   ├── Caddyfile.template    # HTTPS reverse proxy config
 │   └── .env.example          # Environment variable template
-├── scripts/
-│   ├── backup.sh             # Automated backup script
-│   ├── restore.sh            # Restore from backup
-│   ├── health-check.sh       # Uptime monitoring endpoint
-│   └── update.sh             # Manual update trigger
 ├── docs/
 │   ├── CLIENT_GUIDE.md       # End-user documentation
-│   ├── PRICING.md            # Service pricing reference
+│   ├── CLIENT_INTAKE.md      # Client intake checklist
+│   ├── PRICING.md            # Service pricing + verticals
 │   └── TROUBLESHOOTING.md    # Common issues and fixes
+├── verticals/                # Industry-specific starter kits
+│   ├── healthcare.md         # HIPAA-aware medical AI assistant
+│   ├── legal.md              # Attorney privilege-safe legal AI
+│   ├── financial.md          # Financial data privacy AI
+│   ├── realestate.md         # Real estate listings + comps AI
+│   ├── therapy.md            # Clinical documentation AI
+│   ├── education.md          # FERPA-safe student learning AI
+│   ├── construction.md       # Bid/spec/estimate AI for trades
+│   ├── creative.md           # IP-safe creative writing AI
+│   └── smallbusiness.md      # General team productivity AI
 └── README.md
 ```
 

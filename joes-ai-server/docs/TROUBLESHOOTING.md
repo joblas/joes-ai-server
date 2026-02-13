@@ -12,7 +12,7 @@
 docker exec ollama ollama list
 
 # If empty, pull a model
-docker exec ollama ollama pull llama3.2
+docker exec ollama ollama pull qwen3:4b
 
 # If Ollama isn't responding, restart it
 docker compose restart ollama
@@ -67,10 +67,10 @@ Caddy needs port 80 open for the ACME challenge. Make sure no other service is u
 **Cause:** The VPS doesn't have enough RAM for the model, or the model is too large.
 
 **Fix:**
-- Use smaller models: `phi3` (2GB) or `llama3.2` (2GB) instead of larger ones
+- Use smaller models: `qwen3:4b` (2.6 GB) instead of larger ones
 - Check available memory: `free -h`
-- For 8GB VPS, stick to 7B parameter models or smaller
-- Consider quantized models: `llama3.2:latest` uses Q4 quantization by default
+- For 8GB VPS, stick to 4B–8B parameter models
+- Consider quantized models: all Ollama models use Q4 quantization by default
 
 ---
 
@@ -171,7 +171,7 @@ If everything is broken beyond repair:
 cd /opt/joes-ai-stack
 docker compose down -v   # WARNING: -v removes all data volumes
 AI_DOMAIN=ai.client.com EMAIL=admin@client.com \
-  curl -fsSL https://raw.githubusercontent.com/joestechsolutions/joes-ai-server/main/install-vps.sh | bash
+  curl -fsSL https://raw.githubusercontent.com/joblas/joes-ai-server/main/install-vps.sh | bash
 ```
 
 This gives a fresh start. Models will need to be re-downloaded.
