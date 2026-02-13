@@ -111,15 +111,14 @@ detect_hardware() {
 # ═══════════════════════════════════════════════════════════
 #
 # Model sizes (approximate download / RAM when loaded):
-#   llama3.2:1b       ~1.3 GB   — Fast, basic tasks
-#   llama3.2          ~2.0 GB   — Good all-rounder (3B)
-#   phi3:mini         ~2.3 GB   — Microsoft, strong reasoning for size
-#   gemma2:2b         ~1.6 GB   — Google, efficient
-#   mistral           ~4.1 GB   — Fast, great instruction following
-#   llama3.1:8b       ~4.7 GB   — Meta's workhorse, high quality
+#   qwen3:4b          ~2.6 GB   — Rivals 72B quality at tiny size (Feb 2025)
+#   qwen3:8b          ~5.2 GB   — Sweet spot for 8GB RAM, 40+ tok/s
+#   gemma3:12b        ~8.1 GB   — Google multimodal, strong reasoning
 #   deepseek-r1:8b    ~4.9 GB   — Excellent reasoning + coding
-#   qwen2.5:14b       ~9.0 GB   — Alibaba, strong multilingual
-#   llama3.1:70b      ~40  GB   — Flagship quality (needs serious hardware)
+#   deepseek-r1:14b   ~9.0 GB   — Advanced reasoning, larger context
+#   deepseek-r1:32b   ~20  GB   — Near-frontier reasoning locally
+#   qwen3:32b         ~20  GB   — Flagship quality, rivals GPT-4 class
+#   gemma3:27b        ~17  GB   — Google flagship, multimodal
 #   nomic-embed-text  ~0.3 GB   — Embedding model for RAG/document search
 #
 
@@ -147,39 +146,40 @@ select_models() {
 
   # ── Tier 1: Minimal (< 6 GB available) ──
   if [ "${COMPUTE_RAM}" -lt 6 ]; then
-    MODELS_TO_PULL+=("llama3.2:1b")
-    MODELS_DESCRIPTION+=("llama3.2:1b  (1.3 GB) — Lightweight chat, fits your ${COMPUTE_RAM}GB available")
+    MODELS_TO_PULL+=("qwen3:4b")
+    MODELS_DESCRIPTION+=("qwen3:4b     (2.6 GB) — Rivals 72B quality, fits your ${COMPUTE_RAM}GB available")
     TIER="Starter"
 
   # ── Tier 2: Light (6–9 GB available) ──
   elif [ "${COMPUTE_RAM}" -lt 10 ]; then
-    MODELS_TO_PULL+=("llama3.2" "nomic-embed-text")
-    MODELS_DESCRIPTION+=("llama3.2     (2.0 GB) — Solid all-rounder chat model")
+    MODELS_TO_PULL+=("qwen3:8b" "nomic-embed-text")
+    MODELS_DESCRIPTION+=("qwen3:8b     (5.2 GB) — Sweet spot performance, 40+ tok/s")
     MODELS_DESCRIPTION+=("nomic-embed  (0.3 GB) — Enables document search (RAG)")
     TIER="Standard"
 
   # ── Tier 3: Capable (10–19 GB available) ──
   elif [ "${COMPUTE_RAM}" -lt 20 ]; then
-    MODELS_TO_PULL+=("llama3.1:8b" "nomic-embed-text")
-    MODELS_DESCRIPTION+=("llama3.1:8b  (4.7 GB) — High quality chat + reasoning")
-    MODELS_DESCRIPTION+=("nomic-embed  (0.3 GB) — Enables document search (RAG)")
+    MODELS_TO_PULL+=("gemma3:12b" "deepseek-r1:8b" "nomic-embed-text")
+    MODELS_DESCRIPTION+=("gemma3:12b     (8.1 GB) — Google multimodal, strong reasoning")
+    MODELS_DESCRIPTION+=("deepseek-r1:8b (4.9 GB) — Advanced coding + math")
+    MODELS_DESCRIPTION+=("nomic-embed    (0.3 GB) — Enables document search (RAG)")
     TIER="Performance"
 
   # ── Tier 4: Strong (20–45 GB available) ──
   elif [ "${COMPUTE_RAM}" -lt 46 ]; then
-    MODELS_TO_PULL+=("llama3.1:8b" "deepseek-r1:8b" "nomic-embed-text")
-    MODELS_DESCRIPTION+=("llama3.1:8b    (4.7 GB) — High quality general chat")
-    MODELS_DESCRIPTION+=("deepseek-r1:8b (4.9 GB) — Advanced reasoning + coding")
-    MODELS_DESCRIPTION+=("nomic-embed    (0.3 GB) — Enables document search (RAG)")
+    MODELS_TO_PULL+=("qwen3:32b" "deepseek-r1:14b" "nomic-embed-text")
+    MODELS_DESCRIPTION+=("qwen3:32b       (20 GB) — Near-frontier quality locally")
+    MODELS_DESCRIPTION+=("deepseek-r1:14b (9.0 GB) — Advanced reasoning + coding")
+    MODELS_DESCRIPTION+=("nomic-embed     (0.3 GB) — Enables document search (RAG)")
     TIER="Power"
 
   # ── Tier 5: Beast (46+ GB available) ──
   else
-    MODELS_TO_PULL+=("qwen2.5:14b" "llama3.1:8b" "deepseek-r1:8b" "nomic-embed-text")
-    MODELS_DESCRIPTION+=("qwen2.5:14b    (9.0 GB) — Flagship quality, multilingual")
-    MODELS_DESCRIPTION+=("llama3.1:8b    (4.7 GB) — Fast general chat")
-    MODELS_DESCRIPTION+=("deepseek-r1:8b (4.9 GB) — Advanced reasoning + coding")
-    MODELS_DESCRIPTION+=("nomic-embed    (0.3 GB) — Enables document search (RAG)")
+    MODELS_TO_PULL+=("qwen3:32b" "gemma3:27b" "deepseek-r1:32b" "nomic-embed-text")
+    MODELS_DESCRIPTION+=("qwen3:32b       (20 GB) — Flagship quality, rivals GPT-4")
+    MODELS_DESCRIPTION+=("gemma3:27b      (17 GB) — Google flagship, multimodal")
+    MODELS_DESCRIPTION+=("deepseek-r1:32b (20 GB) — Top-tier reasoning + coding")
+    MODELS_DESCRIPTION+=("nomic-embed     (0.3 GB) — Enables document search (RAG)")
     TIER="Maximum"
   fi
 
@@ -199,13 +199,14 @@ select_models() {
     TOTAL_MODEL_GB=0
     for model in "${MODELS_TO_PULL[@]}"; do
       case "$model" in
-        llama3.2:1b)       TOTAL_MODEL_GB=$((TOTAL_MODEL_GB + 2));;
-        llama3.2)          TOTAL_MODEL_GB=$((TOTAL_MODEL_GB + 3));;
-        phi3:mini)         TOTAL_MODEL_GB=$((TOTAL_MODEL_GB + 3));;
-        mistral)           TOTAL_MODEL_GB=$((TOTAL_MODEL_GB + 5));;
-        llama3.1:8b)       TOTAL_MODEL_GB=$((TOTAL_MODEL_GB + 5));;
+        qwen3:4b)          TOTAL_MODEL_GB=$((TOTAL_MODEL_GB + 3));;
+        qwen3:8b)          TOTAL_MODEL_GB=$((TOTAL_MODEL_GB + 6));;
+        gemma3:12b)        TOTAL_MODEL_GB=$((TOTAL_MODEL_GB + 9));;
         deepseek-r1:8b)    TOTAL_MODEL_GB=$((TOTAL_MODEL_GB + 5));;
-        qwen2.5:14b)       TOTAL_MODEL_GB=$((TOTAL_MODEL_GB + 10));;
+        deepseek-r1:14b)   TOTAL_MODEL_GB=$((TOTAL_MODEL_GB + 10));;
+        deepseek-r1:32b)   TOTAL_MODEL_GB=$((TOTAL_MODEL_GB + 21));;
+        qwen3:32b)         TOTAL_MODEL_GB=$((TOTAL_MODEL_GB + 21));;
+        gemma3:27b)        TOTAL_MODEL_GB=$((TOTAL_MODEL_GB + 18));;
         nomic-embed-text)  TOTAL_MODEL_GB=$((TOTAL_MODEL_GB + 1));;
         *)                 TOTAL_MODEL_GB=$((TOTAL_MODEL_GB + 5));;
       esac

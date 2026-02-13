@@ -416,19 +416,19 @@ MODELS_TO_PULL=()
 TIER=""
 
 if [ "$AVAILABLE_RAM_GB" -lt 6 ]; then
-  MODELS_TO_PULL=("llama3.2:1b")
+  MODELS_TO_PULL=("qwen3:4b")
   TIER="Starter"
 elif [ "$AVAILABLE_RAM_GB" -lt 10 ]; then
-  MODELS_TO_PULL=("llama3.2" "nomic-embed-text")
+  MODELS_TO_PULL=("qwen3:8b" "nomic-embed-text")
   TIER="Standard"
 elif [ "$AVAILABLE_RAM_GB" -lt 20 ]; then
-  MODELS_TO_PULL=("llama3.1:8b" "nomic-embed-text")
+  MODELS_TO_PULL=("gemma3:12b" "deepseek-r1:8b" "nomic-embed-text")
   TIER="Performance"
 elif [ "$AVAILABLE_RAM_GB" -lt 46 ]; then
-  MODELS_TO_PULL=("llama3.1:8b" "deepseek-r1:8b" "nomic-embed-text")
+  MODELS_TO_PULL=("qwen3:32b" "deepseek-r1:14b" "nomic-embed-text")
   TIER="Power"
 else
-  MODELS_TO_PULL=("qwen2.5:14b" "llama3.1:8b" "deepseek-r1:8b" "nomic-embed-text")
+  MODELS_TO_PULL=("qwen3:32b" "gemma3:27b" "deepseek-r1:32b" "nomic-embed-text")
   TIER="Maximum"
 fi
 

@@ -134,46 +134,48 @@ function Select-Models {
 
     # ── Tier 1: Minimal (< 6 GB) ──
     if ($computeRam -lt 6) {
-        $script:ModelsToPull += "llama3.2:1b"
-        $script:ModelsDescription += "llama3.2:1b  (1.3 GB) - Lightweight chat"
+        $script:ModelsToPull += "qwen3:4b"
+        $script:ModelsDescription += "qwen3:4b     (2.6 GB) - Rivals 72B quality"
         $script:Tier = "Starter"
     }
     # ── Tier 2: Light (6-9 GB) ──
     elseif ($computeRam -lt 10) {
-        $script:ModelsToPull += "llama3.2"
+        $script:ModelsToPull += "qwen3:8b"
         $script:ModelsToPull += "nomic-embed-text"
-        $script:ModelsDescription += "llama3.2     (2.0 GB) - Solid all-rounder chat"
+        $script:ModelsDescription += "qwen3:8b     (5.2 GB) - Sweet spot, 40+ tok/s"
         $script:ModelsDescription += "nomic-embed  (0.3 GB) - Document search (RAG)"
         $script:Tier = "Standard"
     }
     # ── Tier 3: Capable (10-19 GB) ──
     elseif ($computeRam -lt 20) {
-        $script:ModelsToPull += "llama3.1:8b"
+        $script:ModelsToPull += "gemma3:12b"
+        $script:ModelsToPull += "deepseek-r1:8b"
         $script:ModelsToPull += "nomic-embed-text"
-        $script:ModelsDescription += "llama3.1:8b  (4.7 GB) - High quality chat + reasoning"
-        $script:ModelsDescription += "nomic-embed  (0.3 GB) - Document search (RAG)"
+        $script:ModelsDescription += "gemma3:12b     (8.1 GB) - Google multimodal"
+        $script:ModelsDescription += "deepseek-r1:8b (4.9 GB) - Advanced coding + math"
+        $script:ModelsDescription += "nomic-embed    (0.3 GB) - Document search (RAG)"
         $script:Tier = "Performance"
     }
     # ── Tier 4: Strong (20-45 GB) ──
     elseif ($computeRam -lt 46) {
-        $script:ModelsToPull += "llama3.1:8b"
-        $script:ModelsToPull += "deepseek-r1:8b"
+        $script:ModelsToPull += "qwen3:32b"
+        $script:ModelsToPull += "deepseek-r1:14b"
         $script:ModelsToPull += "nomic-embed-text"
-        $script:ModelsDescription += "llama3.1:8b    (4.7 GB) - High quality general chat"
-        $script:ModelsDescription += "deepseek-r1:8b (4.9 GB) - Advanced reasoning + coding"
-        $script:ModelsDescription += "nomic-embed    (0.3 GB) - Document search (RAG)"
+        $script:ModelsDescription += "qwen3:32b       (20 GB) - Near-frontier quality"
+        $script:ModelsDescription += "deepseek-r1:14b (9.0 GB) - Advanced reasoning"
+        $script:ModelsDescription += "nomic-embed     (0.3 GB) - Document search (RAG)"
         $script:Tier = "Power"
     }
     # ── Tier 5: Beast (46+ GB) ──
     else {
-        $script:ModelsToPull += "qwen2.5:14b"
-        $script:ModelsToPull += "llama3.1:8b"
-        $script:ModelsToPull += "deepseek-r1:8b"
+        $script:ModelsToPull += "qwen3:32b"
+        $script:ModelsToPull += "gemma3:27b"
+        $script:ModelsToPull += "deepseek-r1:32b"
         $script:ModelsToPull += "nomic-embed-text"
-        $script:ModelsDescription += "qwen2.5:14b    (9.0 GB) - Flagship quality, multilingual"
-        $script:ModelsDescription += "llama3.1:8b    (4.7 GB) - Fast general chat"
-        $script:ModelsDescription += "deepseek-r1:8b (4.9 GB) - Advanced reasoning + coding"
-        $script:ModelsDescription += "nomic-embed    (0.3 GB) - Document search (RAG)"
+        $script:ModelsDescription += "qwen3:32b       (20 GB) - Flagship, rivals GPT-4"
+        $script:ModelsDescription += "gemma3:27b      (17 GB) - Google flagship"
+        $script:ModelsDescription += "deepseek-r1:32b (20 GB) - Top-tier reasoning"
+        $script:ModelsDescription += "nomic-embed     (0.3 GB) - Document search (RAG)"
         $script:Tier = "Maximum"
     }
 

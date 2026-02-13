@@ -98,9 +98,9 @@ Then visit **https://ai.yourclient.com** once DNS propagates.
 
 | Tier | RAM | Storage | Good For |
 |---|---|---|---|
-| Minimum | 8 GB | 20 GB | Small models (Phi-3, Gemma 2B) |
-| Recommended | 16 GB | 50 GB | Medium models (Llama 3.2 8B, Mistral 7B) |
-| Power User | 32 GB+ | 100 GB+ | Large models (Llama 3.1 70B quantized) |
+| Starter | 8 GB | 20 GB | Qwen3 4B — rivals 72B quality |
+| Standard | 16 GB | 50 GB | Qwen3 8B, Gemma3 12B — excellent all-rounders |
+| Power | 32 GB+ | 100 GB+ | Qwen3 32B, DeepSeek-R1 32B — near-frontier quality |
 
 For VPS: Hostinger KVM 2 (8 GB RAM, $12/mo) is the sweet spot for small business use.
 
