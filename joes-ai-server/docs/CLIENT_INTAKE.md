@@ -50,7 +50,7 @@ What will they primarily use the AI for?
 - [ ] **Free disk space:** _____ GB
 - [ ] **Processor:** Apple Silicon (M1/M2/M3/M4) / Intel / AMD
 - [ ] **GPU (if Linux/Windows):** NVIDIA model + VRAM / AMD / None
-- [ ] **Docker Desktop installed?** Yes / No
+- [ ] **macOS version:** _____ (Monterey 12+ required)
 
 **Predicted tier:**
 | RAM | Tier | Primary Model |
@@ -59,6 +59,8 @@ What will they primarily use the AI for?
 | 16 GB | Standard/Performance | qwen3:8b or gemma3:12b |
 | 32 GB | Power | qwen3:32b |
 | 64 GB+ | Maximum | Full model stack |
+
+**Note:** No Docker Desktop required for local installs. The installer handles all dependencies automatically (Homebrew, Python, Ollama, Open WebUI).
 
 ---
 
@@ -104,10 +106,10 @@ What will they primarily use the AI for?
 - [ ] Vertical starter kit loaded (system prompts configured)
 - [ ] Admin account created
 - [ ] Additional user accounts created
+- [ ] Auto-start configured and verified (local) / uptime monitor added (VPS)
 - [ ] Client guide sent
 - [ ] Walkthrough call completed (30 min)
 - [ ] ENABLE_SIGNUP set to false
-- [ ] UptimeRobot monitor added (Tier 2/3)
 - [ ] Stripe subscription activated (Tier 2/3)
 - [ ] Follow-up email sent (1 week check-in)
 

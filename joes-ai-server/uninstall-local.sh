@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Joe's Tech Solutions — Local AI Server Uninstaller (Mac / Linux)
-# Cleanly removes the AI server, with option to keep or remove data
+# Cleanly removes the native AI server, with option to keep or remove data
 #
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/joblas/joes-ai-server/main/uninstall-local.sh | bash
@@ -14,61 +14,139 @@ info()  { echo -e "${CYAN}[INFO]${NC}  $*"; }
 ok()    { echo -e "${GREEN}[OK]${NC}    $*"; }
 warn()  { echo -e "${YELLOW}[WARN]${NC}  $*"; }
 
-CONTAINER_NAME="joes-ai-local"
-
 echo ""
 echo -e "${CYAN}╔══════════════════════════════════════════════╗${NC}"
 echo -e "${CYAN}║   Joe's Tech Solutions — AI Server Uninstall  ║${NC}"
+echo -e "${CYAN}║              (Native Install)                 ║${NC}"
 echo -e "${CYAN}╚══════════════════════════════════════════════╝${NC}"
 echo ""
 
-# ── Check if container exists ─────────────────────────
-if ! docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^${CONTAINER_NAME}$"; then
-  warn "No '${CONTAINER_NAME}' container found. Nothing to uninstall."
-  exit 0
+# ═══════════════════════════════════════════════════════════
+# STEP 1: STOP SERVICES
+# ═══════════════════════════════════════════════════════════
+
+info "Stopping AI server services..."
+
+# ── Stop Open WebUI ──
+pkill -f "open-webui" 2>/dev/null || true
+
+# ── Unload launchd agent (macOS) ──
+PLIST_FILE="${HOME}/Library/LaunchAgents/com.joestechsolutions.ai-server.plist"
+if [ -f "${PLIST_FILE}" ]; then
+  launchctl unload "${PLIST_FILE}" 2>/dev/null || true
+  rm -f "${PLIST_FILE}"
+  ok "macOS auto-start removed"
 fi
 
-# ── Stop and remove container ─────────────────────────
-info "Stopping AI server..."
-docker stop "${CONTAINER_NAME}" >/dev/null 2>&1 || true
-docker rm "${CONTAINER_NAME}" >/dev/null 2>&1 || true
-ok "Container removed"
+# ── Disable systemd service (Linux) ──
+if systemctl --user is-enabled joes-ai-webui.service 2>/dev/null; then
+  systemctl --user stop joes-ai-webui.service 2>/dev/null || true
+  systemctl --user disable joes-ai-webui.service 2>/dev/null || true
+  rm -f "${HOME}/.config/systemd/user/joes-ai-webui.service"
+  systemctl --user daemon-reload 2>/dev/null || true
+  ok "Linux systemd service removed"
+fi
 
-# ── Ask about data volumes ───────────────────────────
+ok "Services stopped"
+
+# ═══════════════════════════════════════════════════════════
+# STEP 2: REMOVE OPEN WEBUI
+# ═══════════════════════════════════════════════════════════
+
+info "Removing Open WebUI..."
+
+# ── Remove virtual environment and app data ──
+if [ -d "${HOME}/.joes-ai" ]; then
+  echo ""
+  echo -e "${YELLOW}Your chat history and settings are stored in ~/.joes-ai/data/${NC}"
+  echo -e "${YELLOW}Do you want to keep this data?${NC}"
+  echo ""
+  echo "  1) Keep my data (recommended — only removes the server, not your chats)"
+  echo "  2) Delete everything (removes all chats, settings, and logs permanently)"
+  echo ""
+
+  read -r -p "Choose [1/2]: " choice
+
+  case "$choice" in
+    2)
+      warn "Deleting all Open WebUI data..."
+      rm -rf "${HOME}/.joes-ai"
+      ok "All Open WebUI data deleted"
+      ;;
+    *)
+      # Remove venv and scripts but keep data
+      rm -rf "${HOME}/.joes-ai/venv"
+      rm -f "${HOME}/.joes-ai/start-server.sh"
+      rm -f "${HOME}/.joes-ai/stop-server.sh"
+      rm -rf "${HOME}/.joes-ai/logs"
+      ok "Open WebUI removed (chat data preserved in ~/.joes-ai/data/)"
+      info "To reinstall later, just run the installer again — your data will still be there."
+      ;;
+  esac
+else
+  warn "No ~/.joes-ai directory found. Open WebUI may not have been installed."
+fi
+
+# ═══════════════════════════════════════════════════════════
+# STEP 3: HANDLE OLLAMA & MODELS
+# ═══════════════════════════════════════════════════════════
+
 echo ""
-echo -e "${YELLOW}Your chat history and models are stored in Docker volumes.${NC}"
-echo -e "${YELLOW}Do you want to keep this data? (You can reinstall later and pick up where you left off)${NC}"
+echo -e "${BOLD}What would you like to do with Ollama and your AI models?${NC}"
 echo ""
-echo "  1) Keep my data (recommended — only removes the server, not your chats/models)"
-echo "  2) Delete everything (removes all chats, models, and settings permanently)"
+echo "  1) Keep Ollama and all models (recommended — instant reinstall later)"
+echo "  2) Remove models only (keeps Ollama installed, saves disk space)"
+echo "  3) Remove everything (uninstalls Ollama + all models completely)"
 echo ""
 
-read -r -p "Choose [1/2]: " choice
+read -r -p "Choose [1/2/3]: " ollama_choice
 
-case "$choice" in
+case "$ollama_choice" in
   2)
-    warn "Deleting all data volumes..."
-    docker volume rm joes-ai-ollama 2>/dev/null || true
-    docker volume rm joes-ai-webui 2>/dev/null || true
-    ok "All data deleted"
+    info "Removing all downloaded models..."
+    if command -v ollama >/dev/null 2>&1; then
+      # List and remove each model
+      MODELS=$(ollama list 2>/dev/null | tail -n +2 | awk '{print $1}' || true)
+      if [ -n "${MODELS}" ]; then
+        for model in ${MODELS}; do
+          ollama rm "${model}" 2>/dev/null || true
+          ok "Removed model: ${model}"
+        done
+      else
+        info "No models found to remove."
+      fi
+    fi
+    ok "All models removed. Ollama is still installed."
+    ;;
+  3)
+    info "Uninstalling Ollama completely..."
+
+    # Stop Ollama service
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+      brew services stop ollama 2>/dev/null || true
+      brew uninstall ollama 2>/dev/null || true
+    else
+      sudo systemctl stop ollama 2>/dev/null || true
+      sudo systemctl disable ollama 2>/dev/null || true
+      sudo rm -f /usr/local/bin/ollama
+      sudo rm -rf /usr/share/ollama
+      sudo userdel ollama 2>/dev/null || true
+      sudo groupdel ollama 2>/dev/null || true
+    fi
+
+    # Remove Ollama data directory
+    rm -rf "${HOME}/.ollama"
+    ok "Ollama and all models completely removed"
     ;;
   *)
-    ok "Data volumes preserved (joes-ai-ollama, joes-ai-webui)"
-    info "To reinstall later, just run the installer again — your data will still be there."
+    ok "Ollama and models preserved"
     ;;
 esac
 
-# ── Optionally remove the Docker image ────────────────
-echo ""
-read -r -p "Remove the Docker image too? (saves ~4 GB disk space) [y/N]: " remove_image
-if [[ "${remove_image}" =~ ^[Yy]$ ]]; then
-  docker rmi ghcr.io/open-webui/open-webui:ollama 2>/dev/null || true
-  ok "Docker image removed"
-else
-  ok "Docker image kept (faster reinstall later)"
-fi
+# ═══════════════════════════════════════════════════════════
+# DONE
+# ═══════════════════════════════════════════════════════════
 
-# ── Done ───────────────────────────────────────────────
 echo ""
 echo -e "${GREEN}╔══════════════════════════════════════════════════════════╗${NC}"
 echo -e "${GREEN}║          AI Server has been uninstalled.                 ║${NC}"
