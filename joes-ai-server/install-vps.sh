@@ -11,6 +11,9 @@
 #   AI_DOMAIN   (required)  Domain pointing at this VPS
 #   EMAIL       (optional)  Email for Let's Encrypt certs (defaults to admin@AI_DOMAIN)
 #   SKIP_HTTPS  (optional)  Set to "true" for HTTP-only mode (port 3000)
+#   VERTICAL    (optional)  Create industry-specific AI assistant
+#                           Options: healthcare, legal, financial, realestate,
+#                           therapy, education, construction, creative, smallbusiness
 #
 set -euo pipefail
 
@@ -455,6 +458,47 @@ for model in "${MODELS_TO_PULL[@]}"; do
     warn "${model} failed — pull manually later: docker exec ollama ollama pull ${model}"
   fi
 done
+
+# ── Create vertical assistant (if specified) ──────────
+if [ -n "${VERTICAL:-}" ]; then
+  REPO_RAW="https://raw.githubusercontent.com/joblas/joes-ai-server/main"
+  PROMPT_URL="${REPO_RAW}/verticals/prompts/${VERTICAL}.txt"
+  BASE_MODEL="${MODELS_TO_PULL[0]}"
+
+  case "${VERTICAL}" in
+    healthcare)    ASSISTANT_NAME="Healthcare-Assistant" ;;
+    legal)         ASSISTANT_NAME="Legal-Assistant" ;;
+    financial)     ASSISTANT_NAME="Financial-Assistant" ;;
+    realestate)    ASSISTANT_NAME="RealEstate-Assistant" ;;
+    therapy)       ASSISTANT_NAME="Clinical-Assistant" ;;
+    education)     ASSISTANT_NAME="Learning-Assistant" ;;
+    construction)  ASSISTANT_NAME="Construction-Assistant" ;;
+    creative)      ASSISTANT_NAME="Creative-Assistant" ;;
+    smallbusiness) ASSISTANT_NAME="Business-Assistant" ;;
+    *)             ASSISTANT_NAME="${VERTICAL}-Assistant" ;;
+  esac
+
+  info "Creating ${ASSISTANT_NAME} from ${BASE_MODEL}..."
+
+  SYSTEM_PROMPT=$(curl -fsSL "${PROMPT_URL}" 2>/dev/null || echo "")
+
+  if [ -n "${SYSTEM_PROMPT}" ]; then
+    docker exec ollama bash -c "cat > /tmp/Modelfile << 'MODELFILE_EOF'
+FROM ${BASE_MODEL}
+SYSTEM \"${SYSTEM_PROMPT}\"
+MODELFILE_EOF"
+
+    if docker exec ollama ollama create "${ASSISTANT_NAME}" -f /tmp/Modelfile; then
+      ok "${ASSISTANT_NAME} created successfully!"
+    else
+      warn "Failed to create ${ASSISTANT_NAME}"
+    fi
+    docker exec ollama rm -f /tmp/Modelfile
+  else
+    warn "Could not download prompt for vertical '${VERTICAL}'"
+  fi
+  echo ""
+fi
 
 echo ""
 info "Installed models:"

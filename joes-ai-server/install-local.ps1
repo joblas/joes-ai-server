@@ -9,6 +9,9 @@
 #   $env:WEBUI_PORT  = "3000"       Change the port
 #   $env:PULL_MODEL  = "llama3.2"   Override auto-detected model
 #   $env:SKIP_MODELS = "true"       Skip model downloads
+#   $env:VERTICAL    = "healthcare" Create industry-specific AI assistant
+#                                   Options: healthcare, legal, financial, realestate,
+#                                   therapy, education, construction, creative, smallbusiness
 #
 
 $ErrorActionPreference = "Stop"
@@ -297,7 +300,47 @@ if ($env:SKIP_MODELS -ne "true" -and $script:ModelsToPull.Count -gt 0) {
     }
 }
 
-# ── Step 9: Wait for WebUI ─────────────────────────────
+# ── Step 9: Create vertical assistant (if specified) ───
+if ($env:VERTICAL) {
+    $vertical = $env:VERTICAL.ToLower()
+    $repoRaw = "https://raw.githubusercontent.com/joblas/joes-ai-server/main"
+    $promptUrl = "$repoRaw/verticals/prompts/$vertical.txt"
+    $baseModel = $script:ModelsToPull[0]
+
+    $assistantNames = @{
+        "healthcare"    = "Healthcare-Assistant"
+        "legal"         = "Legal-Assistant"
+        "financial"     = "Financial-Assistant"
+        "realestate"    = "RealEstate-Assistant"
+        "therapy"       = "Clinical-Assistant"
+        "education"     = "Learning-Assistant"
+        "construction"  = "Construction-Assistant"
+        "creative"      = "Creative-Assistant"
+        "smallbusiness" = "Business-Assistant"
+    }
+
+    $assistantName = if ($assistantNames.ContainsKey($vertical)) { $assistantNames[$vertical] } else { "$vertical-Assistant" }
+
+    Write-Host "[INFO]  Creating $assistantName from $baseModel..." -ForegroundColor Cyan
+
+    try {
+        $systemPrompt = (Invoke-WebRequest -Uri $promptUrl -UseBasicParsing -ErrorAction Stop).Content.Trim()
+
+        $modelfileContent = "FROM $baseModel`nSYSTEM `"$systemPrompt`""
+        docker exec $ContainerName bash -c "echo '$modelfileContent' > /tmp/Modelfile"
+        docker exec $ContainerName ollama create $assistantName -f /tmp/Modelfile
+        docker exec $ContainerName rm -f /tmp/Modelfile
+
+        Write-Host "[OK]    $assistantName created successfully!" -ForegroundColor Green
+        Write-Host "[INFO]  Your client will see '$assistantName' in their model dropdown." -ForegroundColor Cyan
+    }
+    catch {
+        Write-Host "[WARN]  Could not create $assistantName - client can still use $baseModel directly" -ForegroundColor Yellow
+    }
+    Write-Host ""
+}
+
+# ── Step 10: Wait for WebUI ────────────────────────────
 Write-Host "[INFO]  Waiting for Open WebUI to start..." -ForegroundColor Cyan
 $ready = $false
 for ($i = 0; $i -lt 30; $i++) {

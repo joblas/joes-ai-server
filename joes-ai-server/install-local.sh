@@ -10,6 +10,9 @@
 #   WEBUI_PORT=3000        Port for Open WebUI (default: 3000)
 #   PULL_MODEL=llama3.2    Override auto-detected model (skip hardware detection)
 #   SKIP_MODELS=true       Skip all model downloads (just install the server)
+#   VERTICAL=healthcare    Create industry-specific AI assistant
+#                          Options: healthcare, legal, financial, realestate,
+#                          therapy, education, construction, creative, smallbusiness
 #
 set -euo pipefail
 
@@ -340,7 +343,56 @@ if [ "${SKIP_MODELS:-false}" != "true" ] && [ ${#MODELS_TO_PULL[@]} -gt 0 ]; the
   done
 fi
 
-# ── Step 10: Wait for WebUI to be ready ────────────────
+# ── Step 10: Create vertical assistant (if specified) ──
+if [ -n "${VERTICAL:-}" ]; then
+  REPO_RAW="https://raw.githubusercontent.com/joblas/joes-ai-server/main"
+  PROMPT_URL="${REPO_RAW}/verticals/prompts/${VERTICAL}.txt"
+  BASE_MODEL="${MODELS_TO_PULL[0]}"
+
+  # Map vertical to friendly display name
+  case "${VERTICAL}" in
+    healthcare)    ASSISTANT_NAME="Healthcare-Assistant" ;;
+    legal)         ASSISTANT_NAME="Legal-Assistant" ;;
+    financial)     ASSISTANT_NAME="Financial-Assistant" ;;
+    realestate)    ASSISTANT_NAME="RealEstate-Assistant" ;;
+    therapy)       ASSISTANT_NAME="Clinical-Assistant" ;;
+    education)     ASSISTANT_NAME="Learning-Assistant" ;;
+    construction)  ASSISTANT_NAME="Construction-Assistant" ;;
+    creative)      ASSISTANT_NAME="Creative-Assistant" ;;
+    smallbusiness) ASSISTANT_NAME="Business-Assistant" ;;
+    *)             ASSISTANT_NAME="${VERTICAL}-Assistant" ;;
+  esac
+
+  info "Creating ${ASSISTANT_NAME} from ${BASE_MODEL}..."
+
+  # Download the system prompt
+  SYSTEM_PROMPT=$(curl -fsSL "${PROMPT_URL}" 2>/dev/null || echo "")
+
+  if [ -n "${SYSTEM_PROMPT}" ]; then
+    # Create Modelfile inside container
+    docker exec "${CONTAINER_NAME}" bash -c "cat > /tmp/Modelfile << 'MODELFILE_EOF'
+FROM ${BASE_MODEL}
+SYSTEM \"${SYSTEM_PROMPT}\"
+MODELFILE_EOF"
+
+    # Create the custom model
+    if docker exec "${CONTAINER_NAME}" ollama create "${ASSISTANT_NAME}" -f /tmp/Modelfile; then
+      ok "${ASSISTANT_NAME} created successfully!"
+      info "Your client will see '${ASSISTANT_NAME}' in their model dropdown."
+    else
+      warn "Failed to create ${ASSISTANT_NAME} — client can still use ${BASE_MODEL} directly"
+    fi
+
+    # Clean up
+    docker exec "${CONTAINER_NAME}" rm -f /tmp/Modelfile
+  else
+    warn "Could not download prompt for vertical '${VERTICAL}'"
+    warn "Valid options: healthcare, legal, financial, realestate, therapy, education, construction, creative, smallbusiness"
+  fi
+  echo ""
+fi
+
+# ── Step 11: Wait for WebUI to be ready ────────────────
 info "Waiting for Open WebUI to start..."
 for i in $(seq 1 30); do
   if curl -sf "http://localhost:${WEBUI_PORT}" >/dev/null 2>&1; then
@@ -349,7 +401,7 @@ for i in $(seq 1 30); do
   sleep 2
 done
 
-# ── Step 11: List what's installed ─────────────────────
+# ── Step 12: List what's installed ─────────────────────
 echo ""
 info "Installed models:"
 docker exec "${CONTAINER_NAME}" ollama list 2>/dev/null || true
