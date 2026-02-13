@@ -21,12 +21,18 @@ A turnkey deployment toolkit for installing a private AI chat server (Ollama + O
 
 ## Quick Start
 
-### 🖥️ Local Install (Mac/Linux/Windows WSL)
+### 🖥️ Local Install
 
 **Prerequisites:** [Docker Desktop](https://docs.docker.com/get-docker/) installed and running.
 
+**Mac / Linux:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/joestechsolutions/joes-ai-server/main/install-local.sh | bash
+curl -fsSL https://raw.githubusercontent.com/joblas/joes-ai-server/main/install-local.sh | bash
+```
+
+**Windows (PowerShell as Administrator):**
+```powershell
+irm https://raw.githubusercontent.com/joblas/joes-ai-server/main/install-local.ps1 | iex
 ```
 
 Then open **http://localhost:3000** and create your admin account.
@@ -38,7 +44,7 @@ Then open **http://localhost:3000** and create your admin account.
 ```bash
 AI_DOMAIN=ai.yourclient.com \
 EMAIL=admin@yourclient.com \
-curl -fsSL https://raw.githubusercontent.com/joestechsolutions/joes-ai-server/main/install-vps.sh | bash
+curl -fsSL https://raw.githubusercontent.com/joblas/joes-ai-server/main/install-vps.sh | bash
 ```
 
 Then visit **https://ai.yourclient.com** once DNS propagates.
@@ -48,12 +54,12 @@ Then visit **https://ai.yourclient.com** once DNS propagates.
 ## What's Included
 
 ### Core Stack
-- **[Ollama](https://ollama.com)** — Run LLMs locally (Llama 3.2, Mistral, Phi-3, DeepSeek, etc.)
+- **[Ollama](https://ollama.com)** — Run LLMs locally (Qwen3, Gemma3, DeepSeek-R1, etc.)
 - **[Open WebUI](https://docs.openwebui.com)** — Beautiful ChatGPT-style interface with RAG, multi-user, model management
 
 ### VPS Extras
 - **[Caddy](https://caddyserver.com)** — Automatic HTTPS with Let's Encrypt
-- **[Watchtower](https://github.com/nickfedor/watchtower)** — Auto-updates all containers (monitor-only mode by default)
+- **[Watchtower](https://github.com/containrrr/watchtower)** — Container update monitoring (monitor-only by default, manual approval)
 - **Health check endpoint** — Simple uptime monitoring
 - **Automated backups** — Daily volume snapshots with 7-day retention
 
@@ -92,9 +98,9 @@ Then visit **https://ai.yourclient.com** once DNS propagates.
 
 | Tier | RAM | Storage | Good For |
 |---|---|---|---|
-| Minimum | 8 GB | 20 GB | Small models (Phi-3, Gemma 2B) |
-| Recommended | 16 GB | 50 GB | Medium models (Llama 3.2 8B, Mistral 7B) |
-| Power User | 32 GB+ | 100 GB+ | Large models (Llama 3.1 70B quantized) |
+| Starter | 8 GB | 20 GB | Qwen3 4B — rivals 72B quality |
+| Standard | 16 GB | 50 GB | Qwen3 8B, Gemma3 12B — excellent all-rounders |
+| Power | 32 GB+ | 100 GB+ | Qwen3 32B, DeepSeek-R1 32B — near-frontier quality |
 
 For VPS: Hostinger KVM 2 (8 GB RAM, $12/mo) is the sweet spot for small business use.
 
@@ -113,7 +119,7 @@ docker compose logs -f open-webui
 docker compose pull && docker compose up -d
 
 # Pull a new model
-docker exec ollama ollama pull llama3.2
+docker exec ollama ollama pull qwen3:4b
 
 # List downloaded models
 docker exec ollama ollama list
@@ -131,22 +137,30 @@ docker compose restart
 
 ```
 joes-ai-server/
-├── install-local.sh          # One-liner for local computers
+├── install-local.sh          # One-liner for Mac / Linux
+├── install-local.ps1         # One-liner for Windows (PowerShell)
 ├── install-vps.sh            # One-liner for VPS deployment
+├── uninstall-local.sh        # Clean uninstall for Mac / Linux
+├── uninstall-local.ps1       # Clean uninstall for Windows
+├── uninstall-vps.sh          # Clean uninstall for VPS
 ├── configs/
-│   ├── docker-compose.yml    # Full stack (Ollama + WebUI + Caddy + Watchtower)
 │   ├── docker-compose.local.yml  # Simplified local-only stack
-│   ├── Caddyfile.template    # HTTPS reverse proxy config
 │   └── .env.example          # Environment variable template
-├── scripts/
-│   ├── backup.sh             # Automated backup script
-│   ├── restore.sh            # Restore from backup
-│   ├── health-check.sh       # Uptime monitoring endpoint
-│   └── update.sh             # Manual update trigger
 ├── docs/
 │   ├── CLIENT_GUIDE.md       # End-user documentation
-│   ├── PRICING.md            # Service pricing reference
+│   ├── CLIENT_INTAKE.md      # Client intake checklist
+│   ├── PRICING.md            # Service pricing + verticals
 │   └── TROUBLESHOOTING.md    # Common issues and fixes
+├── verticals/                # Industry-specific starter kits
+│   ├── healthcare.md         # HIPAA-aware medical AI assistant
+│   ├── legal.md              # Attorney privilege-safe legal AI
+│   ├── financial.md          # Financial data privacy AI
+│   ├── realestate.md         # Real estate listings + comps AI
+│   ├── therapy.md            # Clinical documentation AI
+│   ├── education.md          # FERPA-safe student learning AI
+│   ├── construction.md       # Bid/spec/estimate AI for trades
+│   ├── creative.md           # IP-safe creative writing AI
+│   └── smallbusiness.md      # General team productivity AI
 └── README.md
 ```
 

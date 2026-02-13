@@ -30,13 +30,13 @@ Before you can chat, you need to download an AI model:
 
 | Model | Size | Best For |
 |---|---|---|
-| `llama3.2` | ~2 GB | General chat, great all-rounder |
-| `mistral` | ~4 GB | Fast, good at following instructions |
-| `phi3` | ~2 GB | Lightweight, great for smaller machines |
-| `llama3.1:8b` | ~4.7 GB | Higher quality responses |
-| `deepseek-r1:8b` | ~4.9 GB | Strong reasoning and coding |
+| `qwen3:4b` | ~2.6 GB | Rivals 72B quality, great for 8GB machines |
+| `qwen3:8b` | ~5.2 GB | Sweet spot performance, 40+ tokens/sec |
+| `gemma3:12b` | ~8.1 GB | Google multimodal, strong reasoning |
+| `deepseek-r1:8b` | ~4.9 GB | Advanced reasoning and coding |
+| `qwen3:32b` | ~20 GB | Near-frontier quality, rivals GPT-4 |
 
-**Recommendation:** Start with `llama3.2` — it's fast and works on most hardware.
+**Recommendation:** Start with `qwen3:4b` — it's fast, fits on most hardware, and rivals much larger models.
 
 ### 4. Start Chatting!
 
