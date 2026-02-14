@@ -70,23 +70,27 @@ install_prerequisites() {
     fail "curl is not installed. Please install it and try again."
   fi
 
-  # ── Check for Python 3.11+ (needed for Open WebUI) ──
+  # ── Check for Python 3.11 or 3.12 (Open WebUI requires >=3.11, <3.13) ──
   PYTHON_CMD=""
 
-  # Check if any Python 3.11+ is available
-  for cmd in python3.13 python3.12 python3.11 python3.14 python3; do
+  # Search for compatible Python (3.11 or 3.12 ONLY — 3.13+ is too new for Open WebUI)
+  for cmd in python3.12 python3.11; do
     if command -v "$cmd" >/dev/null 2>&1; then
-      PY_VER=$("$cmd" -c "import sys; print(sys.version_info.minor)" 2>/dev/null || echo "0")
-      PY_MAJOR=$("$cmd" -c "import sys; print(sys.version_info.major)" 2>/dev/null || echo "0")
-      if [ "$PY_MAJOR" -eq 3 ] && [ "$PY_VER" -ge 11 ]; then
-        PYTHON_CMD="$cmd"
-        break
-      fi
+      PYTHON_CMD="$cmd"
+      break
     fi
   done
 
+  # Also check bare python3 in case it's 3.11 or 3.12
+  if [ -z "${PYTHON_CMD}" ] && command -v python3 >/dev/null 2>&1; then
+    PY_MINOR=$(python3 -c "import sys; print(sys.version_info.minor)" 2>/dev/null || echo "0")
+    if [ "$PY_MINOR" -ge 11 ] && [ "$PY_MINOR" -le 12 ]; then
+      PYTHON_CMD="python3"
+    fi
+  fi
+
   if [ -z "${PYTHON_CMD}" ]; then
-    info "Python 3.11+ required but not found. Installing Python 3.11..."
+    info "Python 3.11 or 3.12 required (Open WebUI doesn't support 3.13+). Installing Python 3.11..."
     if [[ "$OSTYPE" == "darwin"* ]]; then
       brew install python@3.11
       # Homebrew Python paths
