@@ -822,24 +822,23 @@ preload_verticals() {
   REPO_RAW="https://raw.githubusercontent.com/joblas/joes-ai-server/main"
   BASE_MODEL="${MODELS_TO_PULL[0]}"
 
-  # All 9 verticals with their display names
-  declare -A VERTICALS=(
-    [healthcare]="Healthcare Assistant"
-    [legal]="Legal Assistant"
-    [financial]="Financial Assistant"
-    [realestate]="Real Estate Assistant"
-    [therapy]="Clinical Assistant"
-    [education]="Learning Assistant"
-    [construction]="Construction Assistant"
-    [creative]="Creative Assistant"
-    [smallbusiness]="Business Assistant"
-  )
-
   LOADED=0
   FAILED=0
 
   for vertical in healthcare legal financial realestate therapy education construction creative smallbusiness; do
-    DISPLAY_NAME="${VERTICALS[$vertical]}"
+    # Map vertical key to display name (bash 3.2 compatible — no associative arrays)
+    case "$vertical" in
+      healthcare)    DISPLAY_NAME="Healthcare Assistant" ;;
+      legal)         DISPLAY_NAME="Legal Assistant" ;;
+      financial)     DISPLAY_NAME="Financial Assistant" ;;
+      realestate)    DISPLAY_NAME="Real Estate Assistant" ;;
+      therapy)       DISPLAY_NAME="Clinical Assistant" ;;
+      education)     DISPLAY_NAME="Learning Assistant" ;;
+      construction)  DISPLAY_NAME="Construction Assistant" ;;
+      creative)      DISPLAY_NAME="Creative Assistant" ;;
+      smallbusiness) DISPLAY_NAME="Business Assistant" ;;
+      *)             DISPLAY_NAME="${vertical}" ;;
+    esac
     PROMPT_URL="${REPO_RAW}/verticals/prompts/${vertical}.txt"
 
     # Download the system prompt
