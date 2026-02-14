@@ -25,6 +25,13 @@ set -euo pipefail
 # ── Config ──────────────────────────────────────────────
 WEBUI_PORT="${WEBUI_PORT:-3000}"
 OS_OVERHEAD_GB=4  # Reserve for OS + apps
+OPENWEBUI_VERSION="0.8.1"
+
+# ── Install log capture ────────────────────────────────
+LOG_DIR="${HOME}/.joes-ai/logs"
+mkdir -p "${LOG_DIR}"
+LOG="${LOG_DIR}/install-$(date +%Y%m%d-%H%M%S).log"
+exec > >(tee -a "${LOG}") 2>&1
 
 # ── Colors ──────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
@@ -33,13 +40,24 @@ ok()    { echo -e "${GREEN}[OK]${NC}    $*"; }
 warn()  { echo -e "${YELLOW}[WARN]${NC}  $*"; }
 fail()  { echo -e "${RED}[ERROR]${NC} $*"; exit 1; }
 
+# ── Box line helper (auto-padded to 56 chars) ──────────
+BOX_WIDTH=56
+box_line() {
+  local content="$1"
+  printf "${GREEN}║${NC}  %-${BOX_WIDTH}s${GREEN}║${NC}\n" "$content"
+}
+box_line_green() {
+  local content="$1"
+  printf "${GREEN}║  %-${BOX_WIDTH}s║${NC}\n" "$content"
+}
+
 # ── Banner ──────────────────────────────────────────────
 echo ""
-echo -e "${CYAN}╔══════════════════════════════════════════════╗${NC}"
-echo -e "${CYAN}║     Joe's Tech Solutions — Local AI Server   ║${NC}"
-echo -e "${CYAN}║         Private ChatGPT Alternative          ║${NC}"
-echo -e "${CYAN}║            (Native Install)                  ║${NC}"
-echo -e "${CYAN}╚══════════════════════════════════════════════╝${NC}"
+echo -e "${CYAN}╔══════════════════════════════════════════════════════════╗${NC}"
+echo -e "${CYAN}║     Joe's Tech Solutions — Local AI Server               ║${NC}"
+echo -e "${CYAN}║         Private ChatGPT Alternative                      ║${NC}"
+echo -e "${CYAN}║            (Native Install)                              ║${NC}"
+echo -e "${CYAN}╚══════════════════════════════════════════════════════════╝${NC}"
 echo ""
 
 # ═══════════════════════════════════════════════════════════
@@ -47,7 +65,7 @@ echo ""
 # ═══════════════════════════════════════════════════════════
 
 install_prerequisites() {
-  info "Step 1/8: Checking prerequisites..."
+  info "Step 1/9: Checking prerequisites..."
 
   # ── macOS: Install Homebrew if missing ──
   if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -139,7 +157,7 @@ install_prerequisites() {
 # ═══════════════════════════════════════════════════════════
 
 detect_hardware() {
-  info "Step 2/8: Scanning hardware..."
+  info "Step 2/9: Scanning hardware..."
 
   TOTAL_RAM_GB=0
   if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -203,7 +221,7 @@ detect_hardware() {
 # ═══════════════════════════════════════════════════════════
 
 select_models() {
-  info "Step 3/8: Selecting optimal AI models..."
+  info "Step 3/9: Selecting optimal AI models..."
 
   MODELS_TO_PULL=()
   MODELS_DESCRIPTION=()
@@ -225,8 +243,9 @@ select_models() {
   info "Selecting optimal models based on ${RAM_SOURCE}: ${COMPUTE_RAM} GB available..."
 
   if [ "${COMPUTE_RAM}" -lt 6 ]; then
-    MODELS_TO_PULL+=("qwen3:4b")
-    MODELS_DESCRIPTION+=("qwen3:4b     (2.6 GB) — Rivals 72B quality, fits your ${COMPUTE_RAM}GB available")
+    MODELS_TO_PULL+=("llama3.2:3b" "gemma3:4b")
+    MODELS_DESCRIPTION+=("llama3.2:3b  (2.0 GB) — Fast text chat, ideal for 8 GB machines")
+    MODELS_DESCRIPTION+=("gemma3:4b    (3.3 GB) — Vision model, reads images & documents")
     TIER="Starter"
   elif [ "${COMPUTE_RAM}" -lt 10 ]; then
     MODELS_TO_PULL+=("qwen3:8b" "nomic-embed-text")
@@ -268,7 +287,8 @@ select_models() {
     TOTAL_MODEL_GB=0
     for model in "${MODELS_TO_PULL[@]}"; do
       case "$model" in
-        qwen3:4b)          TOTAL_MODEL_GB=$((TOTAL_MODEL_GB + 3));;
+        llama3.2:3b)       TOTAL_MODEL_GB=$((TOTAL_MODEL_GB + 2));;
+        gemma3:4b)         TOTAL_MODEL_GB=$((TOTAL_MODEL_GB + 4));;
         qwen3:8b)          TOTAL_MODEL_GB=$((TOTAL_MODEL_GB + 6));;
         gemma3:12b)        TOTAL_MODEL_GB=$((TOTAL_MODEL_GB + 9));;
         deepseek-r1:8b)    TOTAL_MODEL_GB=$((TOTAL_MODEL_GB + 5));;
@@ -292,7 +312,7 @@ select_models() {
 # ═══════════════════════════════════════════════════════════
 
 install_ollama() {
-  info "Step 4/8: Checking Ollama installation..."
+  info "Step 4/9: Checking Ollama installation..."
 
   if command -v ollama >/dev/null 2>&1; then
     ok "Ollama already installed: $(ollama --version 2>/dev/null || echo 'installed')"
@@ -334,7 +354,7 @@ install_ollama() {
 download_models() {
   if [ "${SKIP_MODELS:-false}" != "true" ] && [ ${#MODELS_TO_PULL[@]} -gt 0 ]; then
     echo ""
-    info "Step 5/8: Downloading AI models (this will take a few minutes per model)..."
+    info "Step 5/9: Downloading AI models (this will take a few minutes per model)..."
     echo ""
 
     DOWNLOAD_COUNT=0
@@ -359,7 +379,7 @@ download_models() {
 
 create_vertical() {
   if [ -n "${VERTICAL:-}" ]; then
-    info "Step 6/8: Creating industry-specific AI assistant..."
+    info "Step 6/9: Creating industry-specific AI assistant..."
     REPO_RAW="https://raw.githubusercontent.com/joblas/joes-ai-server/main"
     PROMPT_URL="${REPO_RAW}/verticals/prompts/${VERTICAL}.txt"
     BASE_MODEL="${MODELS_TO_PULL[0]}"
@@ -407,7 +427,7 @@ MODELFILE_EOF
 # ═══════════════════════════════════════════════════════════
 
 install_open_webui() {
-  info "Step 7/8: Setting up Open WebUI..."
+  info "Step 7/9: Setting up Open WebUI..."
 
   VENV_DIR="${HOME}/.joes-ai/venv"
   DATA_DIR="${HOME}/.joes-ai/data"
@@ -422,15 +442,27 @@ install_open_webui() {
   fi
 
   source "${VENV_DIR}/bin/activate"
-  info "Installing Open WebUI (this may take 1-2 minutes)..."
-  pip install --upgrade pip >/dev/null 2>&1
-  pip install open-webui 2>&1 | tail -5
-  ok "Open WebUI installed"
+
+  # Check if correct version is already installed (skip on re-run)
+  CURRENT_OWUI_VERSION=$(pip show open-webui 2>/dev/null | grep "^Version:" | awk '{print $2}' || echo "")
+  if [ "${CURRENT_OWUI_VERSION}" = "${OPENWEBUI_VERSION}" ]; then
+    ok "Open WebUI ${OPENWEBUI_VERSION} already installed — skipping"
+  else
+    if [ -n "${CURRENT_OWUI_VERSION}" ]; then
+      info "Upgrading Open WebUI from ${CURRENT_OWUI_VERSION} to ${OPENWEBUI_VERSION}..."
+    else
+      info "Installing Open WebUI ${OPENWEBUI_VERSION} (this may take 1-2 minutes)..."
+    fi
+    pip install --upgrade pip >/dev/null 2>&1
+    pip install "open-webui==${OPENWEBUI_VERSION}" 2>&1 | tail -5
+    ok "Open WebUI ${OPENWEBUI_VERSION} installed"
+  fi
+
   deactivate
 }
 
 # ═══════════════════════════════════════════════════════════
-# STEP 8: CREATE LAUNCH SCRIPT & AUTO-START
+# STEP 8: CREATE MANAGEMENT SCRIPTS
 # ═══════════════════════════════════════════════════════════
 
 create_scripts() {
@@ -440,9 +472,19 @@ create_scripts() {
   VENV_DIR="${HOME}/.joes-ai/venv"
   DATA_DIR="${HOME}/.joes-ai/data"
 
-  cat > "${LAUNCH_SCRIPT}" << LAUNCH_EOF
+  # Don't overwrite existing scripts (preserves customer customizations)
+  if [ ! -f "${LAUNCH_SCRIPT}" ]; then
+    cat > "${LAUNCH_SCRIPT}" << LAUNCH_EOF
 #!/usr/bin/env bash
 WEBUI_PORT=\${WEBUI_PORT:-${WEBUI_PORT}}
+
+# Prevent duplicate processes
+if pgrep -f "open-webui serve" >/dev/null 2>&1; then
+  echo "Joe's AI Server is already running."
+  echo "Open your browser: http://localhost:\${WEBUI_PORT}"
+  exit 0
+fi
+
 echo "Starting Joe's AI Server..."
 if ! curl -sf http://localhost:11434/api/tags >/dev/null 2>&1; then
   echo "Starting Ollama..."
@@ -460,19 +502,175 @@ echo "Open your browser: http://localhost:\${WEBUI_PORT}"
 echo "Press Ctrl+C to stop the server."
 open-webui serve --port \${WEBUI_PORT}
 LAUNCH_EOF
-  chmod +x "${LAUNCH_SCRIPT}"
-  ok "Launch script created: ${LAUNCH_SCRIPT}"
+    chmod +x "${LAUNCH_SCRIPT}"
+    ok "Launch script created: ${LAUNCH_SCRIPT}"
+  else
+    ok "Launch script already exists — preserved: ${LAUNCH_SCRIPT}"
+  fi
 
   STOP_SCRIPT="${HOME}/.joes-ai/stop-server.sh"
-  cat > "${STOP_SCRIPT}" << STOP_EOF
+  if [ ! -f "${STOP_SCRIPT}" ]; then
+    cat > "${STOP_SCRIPT}" << STOP_EOF
 #!/usr/bin/env bash
 echo "Stopping Joe's AI Server..."
 pkill -f "open-webui" 2>/dev/null || true
 echo "Open WebUI stopped."
 echo "Run ~/.joes-ai/start-server.sh to restart."
 STOP_EOF
-  chmod +x "${STOP_SCRIPT}"
-  ok "Stop script created: ${STOP_SCRIPT}"
+    chmod +x "${STOP_SCRIPT}"
+    ok "Stop script created: ${STOP_SCRIPT}"
+  else
+    ok "Stop script already exists — preserved: ${STOP_SCRIPT}"
+  fi
+
+  # ── Auto-update script (always overwrite — not user-customizable) ──
+  UPDATE_SCRIPT="${HOME}/.joes-ai/update.sh"
+  cat > "${UPDATE_SCRIPT}" << 'UPDATE_EOF'
+#!/usr/bin/env bash
+#
+# Joe's AI Server — Auto-Updater
+# Safely updates Open WebUI and Ollama, then restarts the server.
+# Runs weekly via launchd/systemd, or manually: ~/.joes-ai/update.sh
+#
+set -uo pipefail
+
+LOG_DIR="${HOME}/.joes-ai/logs"
+mkdir -p "${LOG_DIR}"
+LOG="${LOG_DIR}/update-$(date +%Y%m%d-%H%M%S).log"
+
+log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "${LOG}"; }
+
+log "=== Joe's AI Server — Update Check ==="
+
+VENV_DIR="${HOME}/.joes-ai/venv"
+UPDATED=false
+
+# ── Update Open WebUI ──
+if [ -d "${VENV_DIR}" ]; then
+  source "${VENV_DIR}/bin/activate"
+  OLD_VER=$(pip show open-webui 2>/dev/null | grep "^Version:" | awk '{print $2}' || echo "unknown")
+  log "Current Open WebUI version: ${OLD_VER}"
+
+  pip install --upgrade open-webui >> "${LOG}" 2>&1 || log "WARN: pip upgrade failed"
+  NEW_VER=$(pip show open-webui 2>/dev/null | grep "^Version:" | awk '{print $2}' || echo "unknown")
+
+  if [ "${OLD_VER}" != "${NEW_VER}" ]; then
+    log "Open WebUI updated: ${OLD_VER} → ${NEW_VER}"
+    UPDATED=true
+  else
+    log "Open WebUI already up to date (${OLD_VER})"
+  fi
+  deactivate
+else
+  log "WARN: Virtual environment not found at ${VENV_DIR}"
+fi
+
+# ── Update Ollama ──
+if command -v brew >/dev/null 2>&1; then
+  OLD_OLLAMA=$(ollama --version 2>/dev/null || echo "unknown")
+  brew upgrade ollama >> "${LOG}" 2>&1 || log "Ollama already up to date (brew)"
+  NEW_OLLAMA=$(ollama --version 2>/dev/null || echo "unknown")
+  if [ "${OLD_OLLAMA}" != "${NEW_OLLAMA}" ]; then
+    log "Ollama updated: ${OLD_OLLAMA} → ${NEW_OLLAMA}"
+    UPDATED=true
+  else
+    log "Ollama already up to date"
+  fi
+elif command -v ollama >/dev/null 2>&1; then
+  curl -fsSL https://ollama.com/install.sh | sh >> "${LOG}" 2>&1 || log "WARN: Ollama update failed"
+  UPDATED=true
+fi
+
+# ── Restart server if anything was updated ──
+if [ "${UPDATED}" = "true" ]; then
+  log "Restarting Open WebUI..."
+  pkill -f "open-webui" 2>/dev/null || true
+  sleep 2
+  # launchd/systemd KeepAlive will auto-restart, but give it a nudge
+  if [[ "$OSTYPE" == "darwin"* ]]; then
+    PLIST="${HOME}/Library/LaunchAgents/com.joestechsolutions.ai-server.plist"
+    if [ -f "${PLIST}" ]; then
+      launchctl unload "${PLIST}" 2>/dev/null || true
+      launchctl load "${PLIST}" 2>/dev/null || true
+    fi
+  else
+    systemctl --user restart joes-ai-webui.service 2>/dev/null || true
+  fi
+  log "Server restarted after update"
+fi
+
+log "=== Update check complete ==="
+
+# Clean up old update logs (keep last 10)
+ls -1t "${LOG_DIR}"/update-*.log 2>/dev/null | tail -n +11 | xargs rm -f 2>/dev/null || true
+UPDATE_EOF
+  chmod +x "${UPDATE_SCRIPT}"
+  ok "Update script created: ${UPDATE_SCRIPT}"
+
+  # ── Schedule weekly auto-update ──
+  if [[ "$OSTYPE" == "darwin"* ]]; then
+    UPDATE_PLIST="${HOME}/Library/LaunchAgents/com.joestechsolutions.ai-update.plist"
+    cat > "${UPDATE_PLIST}" << UPDATE_PLIST_EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.joestechsolutions.ai-update</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>${HOME}/.joes-ai/update.sh</string>
+    </array>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Weekday</key>
+        <integer>3</integer>
+        <key>Hour</key>
+        <integer>4</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>${HOME}/.joes-ai/logs/update-launchd.log</string>
+    <key>StandardErrorPath</key>
+    <string>${HOME}/.joes-ai/logs/update-launchd.log</string>
+</dict>
+</plist>
+UPDATE_PLIST_EOF
+    launchctl unload "${UPDATE_PLIST}" 2>/dev/null || true
+    launchctl load "${UPDATE_PLIST}"
+    ok "Weekly auto-update scheduled (Wednesdays at 4 AM)"
+  else
+    UPDATE_TIMER_DIR="${HOME}/.config/systemd/user"
+    mkdir -p "${UPDATE_TIMER_DIR}"
+
+    cat > "${UPDATE_TIMER_DIR}/joes-ai-update.service" << UPDATE_SVC_EOF
+[Unit]
+Description=Joe's AI Server — Weekly Update
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash ${HOME}/.joes-ai/update.sh
+UPDATE_SVC_EOF
+
+    cat > "${UPDATE_TIMER_DIR}/joes-ai-update.timer" << UPDATE_TIMER_EOF
+[Unit]
+Description=Joe's AI Server — Weekly Update Timer
+
+[Timer]
+OnCalendar=Wed *-*-* 04:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+UPDATE_TIMER_EOF
+
+    systemctl --user daemon-reload
+    systemctl --user enable joes-ai-update.timer
+    systemctl --user start joes-ai-update.timer
+    ok "Weekly auto-update scheduled (Wednesdays at 4 AM)"
+  fi
 }
 
 # ═══════════════════════════════════════════════════════════
@@ -486,7 +684,6 @@ start_and_verify() {
 
   VENV_DIR="${HOME}/.joes-ai/venv"
   DATA_DIR="${HOME}/.joes-ai/data"
-  LOG_DIR="${HOME}/.joes-ai/logs"
   mkdir -p "${LOG_DIR}"
 
   # Kill any existing Open WebUI processes
@@ -500,10 +697,10 @@ start_and_verify() {
 
   # Wait for Open WebUI with progress indicator (up to 5 minutes)
   MAX_WAIT=100  # 100 × 3 seconds = 5 minutes
-  READY=false
+  WEBUI_STARTED=false
   for i in $(seq 1 $MAX_WAIT); do
     if curl -sf "http://localhost:${WEBUI_PORT}" >/dev/null 2>&1; then
-      READY=true
+      WEBUI_STARTED=true
       break
     fi
 
@@ -527,7 +724,7 @@ start_and_verify() {
   done
   echo ""
 
-  if [ "$READY" = "true" ]; then
+  if [ "$WEBUI_STARTED" = "true" ]; then
     ok "Open WebUI is running at http://localhost:${WEBUI_PORT}"
   else
     warn "Open WebUI is still starting up — it may need another minute."
@@ -535,7 +732,7 @@ start_and_verify() {
     warn "Logs:  cat ~/.joes-ai/logs/webui-stderr.log"
   fi
 
-  # ── Now configure auto-start for future logins ──
+  # ── Configure auto-start for future logins ──
   info "Configuring auto-start for future logins..."
 
   if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -576,8 +773,6 @@ start_and_verify() {
 </plist>
 PLIST_EOF
 
-    # Don't load the plist now — Open WebUI is already running from our manual start.
-    # launchd will take over on next login. If the manual process dies, launchd picks up.
     launchctl unload "${PLIST_FILE}" 2>/dev/null || true
     launchctl load "${PLIST_FILE}"
     ok "Auto-start configured — Open WebUI will start automatically on login"
@@ -605,8 +800,6 @@ SERVICE_EOF
 
     systemctl --user daemon-reload
     systemctl --user enable joes-ai-webui.service
-    # Don't start the service now — we already started it manually above.
-    # systemd will take over on next login.
     ok "Auto-start configured — Open WebUI will start automatically on login"
   fi
 
@@ -614,6 +807,339 @@ SERVICE_EOF
   info "Installed models:"
   ollama list 2>/dev/null || true
   echo ""
+
+  MODEL_COUNT=$(ollama list 2>/dev/null | tail -n +2 | wc -l | tr -d ' ' || echo "0")
+}
+
+# ═══════════════════════════════════════════════════════════
+# PRELOAD VERTICAL ASSISTANTS INTO OLLAMA
+# ═══════════════════════════════════════════════════════════
+
+preload_verticals() {
+  info "Loading industry-specific AI assistants..."
+  echo ""
+
+  REPO_RAW="https://raw.githubusercontent.com/joblas/joes-ai-server/main"
+  BASE_MODEL="${MODELS_TO_PULL[0]}"
+
+  # All 9 verticals with their display names
+  declare -A VERTICALS=(
+    [healthcare]="Healthcare Assistant"
+    [legal]="Legal Assistant"
+    [financial]="Financial Assistant"
+    [realestate]="Real Estate Assistant"
+    [therapy]="Clinical Assistant"
+    [education]="Learning Assistant"
+    [construction]="Construction Assistant"
+    [creative]="Creative Assistant"
+    [smallbusiness]="Business Assistant"
+  )
+
+  LOADED=0
+  FAILED=0
+
+  for vertical in healthcare legal financial realestate therapy education construction creative smallbusiness; do
+    DISPLAY_NAME="${VERTICALS[$vertical]}"
+    PROMPT_URL="${REPO_RAW}/verticals/prompts/${vertical}.txt"
+
+    # Download the system prompt
+    SYSTEM_PROMPT=$(curl -fsSL "${PROMPT_URL}" 2>/dev/null || echo "")
+    if [ -z "${SYSTEM_PROMPT}" ]; then
+      warn "  Could not download prompt for ${vertical} — skipping"
+      FAILED=$((FAILED + 1))
+      continue
+    fi
+
+    # Create Ollama modelfile and register the assistant
+    MODELFILE_PATH="/tmp/joes-ai-${vertical}-$$"
+    cat > "${MODELFILE_PATH}" << MODELFILE_EOF
+FROM ${BASE_MODEL}
+SYSTEM ${SYSTEM_PROMPT}
+MODELFILE_EOF
+
+    if ollama create "${DISPLAY_NAME}" -f "${MODELFILE_PATH}" >/dev/null 2>&1; then
+      ok "  ${DISPLAY_NAME}"
+      LOADED=$((LOADED + 1))
+    else
+      warn "  Failed to create ${DISPLAY_NAME}"
+      FAILED=$((FAILED + 1))
+    fi
+    rm -f "${MODELFILE_PATH}"
+  done
+
+  echo ""
+  if [ "${LOADED}" -gt 0 ]; then
+    ok "${LOADED} industry assistants loaded — they'll appear in the model dropdown"
+  fi
+  if [ "${FAILED}" -gt 0 ]; then
+    warn "${FAILED} assistants failed to load (can be added later)"
+  fi
+}
+
+# ═══════════════════════════════════════════════════════════
+# GENERATE LOCAL WELCOME PAGE
+# ═══════════════════════════════════════════════════════════
+
+generate_welcome_page() {
+  local WELCOME_FILE="${HOME}/.joes-ai/welcome.html"
+  local INSTALL_DATE
+  INSTALL_DATE="$(date '+%B %d, %Y at %I:%M %p')"
+
+  # Build model table rows from MODELS_TO_PULL
+  local MODEL_ROWS=""
+  for model in "${MODELS_TO_PULL[@]}"; do
+    case "$model" in
+      llama3.2:3b)       MODEL_ROWS="${MODEL_ROWS}<tr><td><code>llama3.2:3b</code></td><td>~2.0 GB</td><td>Fast text chat, great for 8 GB machines</td></tr>" ;;
+      gemma3:4b)         MODEL_ROWS="${MODEL_ROWS}<tr><td><code>gemma3:4b</code></td><td>~3.3 GB</td><td>Vision model — reads images and documents</td></tr>" ;;
+      qwen3:8b)          MODEL_ROWS="${MODEL_ROWS}<tr><td><code>qwen3:8b</code></td><td>~5.2 GB</td><td>Sweet spot performance, 40+ tokens/sec</td></tr>" ;;
+      gemma3:12b)        MODEL_ROWS="${MODEL_ROWS}<tr><td><code>gemma3:12b</code></td><td>~8.1 GB</td><td>Google multimodal, strong reasoning</td></tr>" ;;
+      deepseek-r1:8b)    MODEL_ROWS="${MODEL_ROWS}<tr><td><code>deepseek-r1:8b</code></td><td>~4.9 GB</td><td>Advanced reasoning and coding</td></tr>" ;;
+      deepseek-r1:14b)   MODEL_ROWS="${MODEL_ROWS}<tr><td><code>deepseek-r1:14b</code></td><td>~9.0 GB</td><td>Advanced reasoning + coding</td></tr>" ;;
+      deepseek-r1:32b)   MODEL_ROWS="${MODEL_ROWS}<tr><td><code>deepseek-r1:32b</code></td><td>~20 GB</td><td>Top-tier reasoning + coding</td></tr>" ;;
+      qwen3:32b)         MODEL_ROWS="${MODEL_ROWS}<tr><td><code>qwen3:32b</code></td><td>~20 GB</td><td>Near-frontier quality, rivals GPT-4</td></tr>" ;;
+      gemma3:27b)        MODEL_ROWS="${MODEL_ROWS}<tr><td><code>gemma3:27b</code></td><td>~17 GB</td><td>Google flagship, multimodal</td></tr>" ;;
+      nomic-embed-text)  MODEL_ROWS="${MODEL_ROWS}<tr><td><code>nomic-embed-text</code></td><td>~0.3 GB</td><td>Enables document search (RAG)</td></tr>" ;;
+      *)                 MODEL_ROWS="${MODEL_ROWS}<tr><td><code>${model}</code></td><td>-</td><td>User-selected model</td></tr>" ;;
+    esac
+  done
+
+  cat > "${WELCOME_FILE}" << 'WELCOME_HTML_TOP'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Your Private AI Server - Joe's Tech Solutions</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: #f5f7fa; color: #1a2332; line-height: 1.6;
+  }
+  .header {
+    background: linear-gradient(135deg, #0f2847 0%, #1a4b8c 50%, #2563a8 100%);
+    color: white; padding: 48px 24px; text-align: center;
+  }
+  .header h1 { font-size: 2.2em; font-weight: 700; margin-bottom: 8px; }
+  .header p { font-size: 1.1em; opacity: 0.9; }
+  .header .brand { font-size: 0.85em; opacity: 0.7; margin-top: 12px; letter-spacing: 1px; text-transform: uppercase; }
+  .container { max-width: 820px; margin: 0 auto; padding: 0 24px 48px; }
+  .card {
+    background: white; border-radius: 12px; padding: 32px;
+    margin-top: 28px; box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    border: 1px solid #e2e8f0;
+  }
+  .card h2 {
+    font-size: 1.35em; color: #0f2847; margin-bottom: 16px;
+    padding-bottom: 10px; border-bottom: 2px solid #e2e8f0;
+  }
+  .summary-grid {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 12px 24px;
+  }
+  .summary-item { display: flex; flex-direction: column; }
+  .summary-label { font-size: 0.8em; text-transform: uppercase; color: #64748b; letter-spacing: 0.5px; font-weight: 600; }
+  .summary-value { font-size: 1.05em; font-weight: 600; color: #1a2332; }
+  .steps {
+    display: flex; justify-content: space-between; gap: 16px;
+    margin-top: 8px;
+  }
+  .step {
+    flex: 1; text-align: center; padding: 20px 12px;
+    background: #f0f5ff; border-radius: 10px;
+  }
+  .step-num {
+    display: inline-block; width: 36px; height: 36px; line-height: 36px;
+    background: #1a4b8c; color: white; border-radius: 50%;
+    font-weight: 700; font-size: 1.1em; margin-bottom: 10px;
+  }
+  .step-title { font-weight: 600; font-size: 0.95em; margin-bottom: 4px; }
+  .step-desc { font-size: 0.82em; color: #64748b; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  th { background: #f0f5ff; text-align: left; padding: 10px 12px; font-size: 0.85em; color: #1a4b8c; border-bottom: 2px solid #d4e0f0; }
+  td { padding: 10px 12px; border-bottom: 1px solid #e2e8f0; font-size: 0.92em; }
+  tr:last-child td { border-bottom: none; }
+  code {
+    background: #f0f5ff; padding: 2px 8px; border-radius: 4px;
+    font-family: "SF Mono", "Fira Code", Menlo, monospace;
+    font-size: 0.88em; color: #1a4b8c;
+  }
+  .cmd-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
+  .cmd-item {
+    background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .cmd-label { font-size: 0.78em; text-transform: uppercase; color: #64748b; font-weight: 600; margin-bottom: 4px; }
+  .cmd-code { font-family: "SF Mono", Menlo, monospace; font-size: 0.88em; color: #1a2332; }
+  .troubleshooting-item { padding: 12px 0; border-bottom: 1px solid #f0f0f0; }
+  .troubleshooting-item:last-child { border-bottom: none; }
+  .troubleshooting-item strong { color: #0f2847; }
+  .troubleshooting-item p { margin-top: 4px; font-size: 0.92em; color: #475569; }
+  .footer {
+    text-align: center; padding: 32px 24px; color: #94a3b8;
+    font-size: 0.85em; border-top: 1px solid #e2e8f0; margin-top: 40px;
+  }
+  .footer a { color: #1a4b8c; text-decoration: none; }
+  .footer a:hover { text-decoration: underline; }
+  @media (max-width: 600px) {
+    .summary-grid { grid-template-columns: 1fr; }
+    .steps { flex-direction: column; }
+    .cmd-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>Your Private AI Server</h1>
+  <p>Everything runs locally &mdash; your data never leaves this computer.</p>
+  <div class="brand">Joe's Tech Solutions LLC</div>
+</div>
+<div class="container">
+WELCOME_HTML_TOP
+
+  # ── System Summary card (dynamic values) ──
+  cat >> "${WELCOME_FILE}" << WELCOME_HTML_SUMMARY
+  <div class="card">
+    <h2>System Summary</h2>
+    <div class="summary-grid">
+      <div class="summary-item">
+        <span class="summary-label">Total RAM</span>
+        <span class="summary-value">${TOTAL_RAM_GB} GB</span>
+      </div>
+      <div class="summary-item">
+        <span class="summary-label">Performance Tier</span>
+        <span class="summary-value">${TIER:-Custom}</span>
+      </div>
+      <div class="summary-item">
+        <span class="summary-label">CPU Cores</span>
+        <span class="summary-value">${CPU_CORES}</span>
+      </div>
+      <div class="summary-item">
+        <span class="summary-label">GPU</span>
+        <span class="summary-value">${GPU_NAME}</span>
+      </div>
+      <div class="summary-item">
+        <span class="summary-label">Web UI Port</span>
+        <span class="summary-value">${WEBUI_PORT}</span>
+      </div>
+      <div class="summary-item">
+        <span class="summary-label">Models Installed</span>
+        <span class="summary-value">${MODEL_COUNT}</span>
+      </div>
+    </div>
+  </div>
+WELCOME_HTML_SUMMARY
+
+  # ── Getting Started card ──
+  cat >> "${WELCOME_FILE}" << WELCOME_HTML_STARTED
+  <div class="card">
+    <h2>Getting Started</h2>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-title">Open Browser</div>
+        <div class="step-desc">Go to <strong>http://localhost:${WEBUI_PORT}</strong></div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-title">Create Account</div>
+        <div class="step-desc">First signup becomes the admin</div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-title">Start Chatting</div>
+        <div class="step-desc">Pick a model from the dropdown and ask anything</div>
+      </div>
+    </div>
+  </div>
+WELCOME_HTML_STARTED
+
+  # ── Model Recommendations card (dynamic rows) ──
+  cat >> "${WELCOME_FILE}" << WELCOME_HTML_MODELS
+  <div class="card">
+    <h2>Your Installed Models</h2>
+    <table>
+      <thead><tr><th>Model</th><th>Size</th><th>Best For</th></tr></thead>
+      <tbody>
+        ${MODEL_ROWS}
+      </tbody>
+    </table>
+  </div>
+WELCOME_HTML_MODELS
+
+  # ── Quick Reference card ──
+  cat >> "${WELCOME_FILE}" << 'WELCOME_HTML_CMDS'
+  <div class="card">
+    <h2>Quick Reference</h2>
+    <div class="cmd-grid">
+      <div class="cmd-item">
+        <div class="cmd-label">Start Server</div>
+        <div class="cmd-code">~/.joes-ai/start-server.sh</div>
+      </div>
+      <div class="cmd-item">
+        <div class="cmd-label">Stop Server</div>
+        <div class="cmd-code">~/.joes-ai/stop-server.sh</div>
+      </div>
+      <div class="cmd-item">
+        <div class="cmd-label">List Models</div>
+        <div class="cmd-code">ollama list</div>
+      </div>
+      <div class="cmd-item">
+        <div class="cmd-label">Download Model</div>
+        <div class="cmd-code">ollama pull &lt;model&gt;</div>
+      </div>
+      <div class="cmd-item">
+        <div class="cmd-label">Remove Model</div>
+        <div class="cmd-code">ollama rm &lt;model&gt;</div>
+      </div>
+      <div class="cmd-item">
+        <div class="cmd-label">Update Everything</div>
+        <div class="cmd-code">~/.joes-ai/update.sh</div>
+      </div>
+    </div>
+  </div>
+WELCOME_HTML_CMDS
+
+  # ── Troubleshooting card ──
+  cat >> "${WELCOME_FILE}" << 'WELCOME_HTML_TROUBLE'
+  <div class="card">
+    <h2>Troubleshooting</h2>
+    <div class="troubleshooting-item">
+      <strong>Can't connect to the server?</strong>
+      <p>Open Terminal and run: <code>~/.joes-ai/start-server.sh</code><br>
+      Make sure Ollama is also running: <code>brew services start ollama</code></p>
+    </div>
+    <div class="troubleshooting-item">
+      <strong>AI doesn't respond or is very slow?</strong>
+      <p>Check that a model is selected in the dropdown. Try a smaller model if responses are slow.
+      Restart the server if needed: <code>~/.joes-ai/stop-server.sh && ~/.joes-ai/start-server.sh</code></p>
+    </div>
+    <div class="troubleshooting-item">
+      <strong>Need to reinstall?</strong>
+      <p>You can safely re-run the installer at any time &mdash; it won't delete your chats or settings:<br>
+      <code>curl -fsSL https://raw.githubusercontent.com/joblas/joes-ai-server/main/install-local.sh | bash</code></p>
+    </div>
+    <div class="troubleshooting-item">
+      <strong>Still stuck?</strong>
+      <p>Email <a href="mailto:joe@joestechsolutions.com">joe@joestechsolutions.com</a> with a description
+      of the issue. Attach the install log from <code>~/.joes-ai/logs/</code> if available.</p>
+    </div>
+  </div>
+WELCOME_HTML_TROUBLE
+
+  # ── Footer (dynamic install date) ──
+  cat >> "${WELCOME_FILE}" << WELCOME_HTML_FOOTER
+</div>
+<div class="footer">
+  <p>Installed on ${INSTALL_DATE}</p>
+  <p style="margin-top: 6px;">Support: <a href="mailto:joe@joestechsolutions.com">joe@joestechsolutions.com</a></p>
+  <p style="margin-top: 6px; opacity: 0.7;">Joe's Tech Solutions LLC &mdash; Private AI for Everyone</p>
+</div>
+</body>
+</html>
+WELCOME_HTML_FOOTER
+
+  ok "Welcome page generated: ${WELCOME_FILE}"
 }
 
 # ═══════════════════════════════════════════════════════════
@@ -629,37 +1155,78 @@ fi
 
 install_ollama
 download_models
-create_vertical
 install_open_webui
 create_scripts
 start_and_verify
 
-# ── Success Banner ────────────────────────────────────────
+# Load vertical assistants (only if WebUI started and models are available)
+if [ "${WEBUI_STARTED}" = "true" ] && [ ${#MODELS_TO_PULL[@]} -gt 0 ]; then
+  if [ -n "${VERTICAL:-}" ]; then
+    # Single vertical specified via env var — load just that one (legacy support)
+    create_vertical
+  else
+    # Default: preload all 9 industry assistants
+    preload_verticals
+  fi
+fi
+
+# Refresh model count (includes verticals now)
+MODEL_COUNT=$(ollama list 2>/dev/null | tail -n +2 | wc -l | tr -d ' ' || echo "0")
+
+generate_welcome_page
+
+# ── Conditional Banner ────────────────────────────────────
 echo ""
-echo -e "${GREEN}╔══════════════════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║            ✅ Joe's Local AI Server is LIVE!             ║${NC}"
-echo -e "${GREEN}╠══════════════════════════════════════════════════════════╣${NC}"
-echo -e "${GREEN}║                                                          ║${NC}"
-echo -e "${GREEN}║  Open your browser:  http://localhost:${WEBUI_PORT}                ║${NC}"
-echo -e "${GREEN}║                                                          ║${NC}"
-echo -e "${GREEN}║  Hardware:  ${TOTAL_RAM_GB} GB RAM · ${CPU_CORES} cores · ${GPU_TYPE} GPU         ${NC}"
-echo -e "${GREEN}║  Tier:      ${TIER:-Custom}                                        ${NC}"
-echo -e "${GREEN}║  Models:    ${#MODELS_TO_PULL[@]} installed and ready                       ${NC}"
-echo -e "${GREEN}║                                                          ║${NC}"
-echo -e "${GREEN}║  First visit: Create your admin account, then chat!      ║${NC}"
-echo -e "${GREEN}║                                                          ║${NC}"
-echo -e "${GREEN}║  Commands:                                               ║${NC}"
-echo -e "${GREEN}║    ~/.joes-ai/start-server.sh    (start server)          ║${NC}"
-echo -e "${GREEN}║    ~/.joes-ai/stop-server.sh     (stop server)           ║${NC}"
-echo -e "${GREEN}║    ollama list                   (list models)           ║${NC}"
-echo -e "${GREEN}║    ollama pull <model>           (download model)        ║${NC}"
-echo -e "${GREEN}║    ollama rm <model>             (remove model)          ║${NC}"
-echo -e "${GREEN}║                                                          ║${NC}"
-echo -e "${GREEN}║  Auto-start: Server starts automatically on login ✓      ║${NC}"
-echo -e "${GREEN}║                                                          ║${NC}"
-echo -e "${GREEN}║  Support: joe@joestechsolutions.com                      ║${NC}"
-echo -e "${GREEN}╚══════════════════════════════════════════════════════════╝${NC}"
+if [ "${WEBUI_STARTED}" = "true" ]; then
+  echo -e "${GREEN}╔══════════════════════════════════════════════════════════╗${NC}"
+  box_line_green "$(printf '%-4s%s' '' '✅ Joes Local AI Server is LIVE!')"
+  echo -e "${GREEN}╠══════════════════════════════════════════════════════════╣${NC}"
+  box_line_green ""
+  box_line_green "$(printf 'Open your browser:  http://localhost:%s' "${WEBUI_PORT}")"
+  box_line_green ""
+  box_line_green "$(printf 'Hardware:  %s GB RAM / %s cores / %s' "${TOTAL_RAM_GB}" "${CPU_CORES}" "${GPU_TYPE}")"
+  box_line_green "$(printf 'Tier:      %s' "${TIER:-Custom}")"
+  box_line_green "$(printf 'Models:    %s installed and ready' "${MODEL_COUNT}")"
+  box_line_green ""
+  box_line_green "First visit: Create your admin account, then chat!"
+  box_line_green ""
+  box_line_green "Commands:"
+  box_line_green "  ~/.joes-ai/start-server.sh    (start server)"
+  box_line_green "  ~/.joes-ai/stop-server.sh     (stop server)"
+  box_line_green "  ollama list                   (list models)"
+  box_line_green "  ollama pull <model>           (download model)"
+  box_line_green "  ollama rm <model>             (remove model)"
+  box_line_green ""
+  box_line_green "Auto-start: Server starts automatically on login"
+  box_line_green "Auto-update: Checks for updates weekly (Wed 4 AM)"
+  box_line_green ""
+  box_line_green "Support: joe@joestechsolutions.com"
+  echo -e "${GREEN}╚══════════════════════════════════════════════════════════╝${NC}"
+else
+  echo -e "${YELLOW}╔══════════════════════════════════════════════════════════╗${NC}"
+  printf "${YELLOW}║${NC}  %-56s${YELLOW}║${NC}\n" "Installation Complete — Server Not Verified"
+  echo -e "${YELLOW}╠══════════════════════════════════════════════════════════╣${NC}"
+  printf "${YELLOW}║${NC}  %-56s${YELLOW}║${NC}\n" ""
+  printf "${YELLOW}║${NC}  %-56s${YELLOW}║${NC}\n" "Everything was installed, but Open WebUI did not"
+  printf "${YELLOW}║${NC}  %-56s${YELLOW}║${NC}\n" "respond on port ${WEBUI_PORT} within the timeout."
+  printf "${YELLOW}║${NC}  %-56s${YELLOW}║${NC}\n" ""
+  printf "${YELLOW}║${NC}  %-56s${YELLOW}║${NC}\n" "Try these steps:"
+  printf "${YELLOW}║${NC}  %-56s${YELLOW}║${NC}\n" "  1. Wait a minute, then open http://localhost:${WEBUI_PORT}"
+  printf "${YELLOW}║${NC}  %-56s${YELLOW}║${NC}\n" "  2. Check logs: cat ~/.joes-ai/logs/webui-stderr.log"
+  printf "${YELLOW}║${NC}  %-56s${YELLOW}║${NC}\n" "  3. Restart: ~/.joes-ai/start-server.sh"
+  printf "${YELLOW}║${NC}  %-56s${YELLOW}║${NC}\n" "  4. Email joe@joestechsolutions.com with the log"
+  printf "${YELLOW}║${NC}  %-56s${YELLOW}║${NC}\n" ""
+  printf "${YELLOW}║${NC}  %-56s${YELLOW}║${NC}\n" "Install log: ${LOG}"
+  echo -e "${YELLOW}╚══════════════════════════════════════════════════════════╝${NC}"
+fi
 echo ""
+
+# Auto-open welcome page on success (macOS)
+if [ "${WEBUI_STARTED}" = "true" ] && [[ "$OSTYPE" == "darwin"* ]]; then
+  open "${HOME}/.joes-ai/welcome.html" 2>/dev/null || true
+fi
+
+info "Install log saved to: ${LOG}"
 
 } # end main()
 

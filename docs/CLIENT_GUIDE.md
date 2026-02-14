@@ -30,13 +30,14 @@ Before you can chat, you need to download an AI model:
 
 | Model | Size | Best For |
 |---|---|---|
-| `qwen3:4b` | ~2.6 GB | Rivals 72B quality, great for 8GB machines |
+| `llama3.2:3b` | ~2.0 GB | Fast text chat, ideal for 8 GB machines |
+| `gemma3:4b` | ~3.3 GB | Vision model — reads images & documents |
 | `qwen3:8b` | ~5.2 GB | Sweet spot performance, 40+ tokens/sec |
 | `gemma3:12b` | ~8.1 GB | Google multimodal, strong reasoning |
 | `deepseek-r1:8b` | ~4.9 GB | Advanced reasoning and coding |
 | `qwen3:32b` | ~20 GB | Near-frontier quality, rivals GPT-4 |
 
-**Recommendation:** Start with `qwen3:4b` — it's fast, fits on most hardware, and rivals much larger models.
+**Recommendation:** Start with `llama3.2:3b` — it's fast, fits on most hardware, and responds instantly.
 
 ### 4. Start Chatting!
 
@@ -65,7 +66,10 @@ Yes. Everything runs on your server. No data is sent to any third party.
 If running on a local computer — yes, once models are downloaded. On a VPS, you need internet to connect to it.
 
 **Q: How do I update?**
-Updates happen automatically every night at 4 AM. You don't need to do anything.
+Your server checks for updates automatically every week and applies them if available. You don't need to do anything. If you want to update manually at any time, open Terminal and run:
+```
+~/.joes-ai/update.sh
+```
 
 **Q: Something isn't working. Who do I contact?**
 Email **joe@joestechsolutions.com** — I'll get back to you within 24 hours.
