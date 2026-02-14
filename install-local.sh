@@ -385,27 +385,29 @@ create_vertical() {
     BASE_MODEL="${MODELS_TO_PULL[0]}"
 
     case "${VERTICAL}" in
-      healthcare)    ASSISTANT_NAME="Healthcare-Assistant" ;;
-      legal)         ASSISTANT_NAME="Legal-Assistant" ;;
-      financial)     ASSISTANT_NAME="Financial-Assistant" ;;
-      realestate)    ASSISTANT_NAME="RealEstate-Assistant" ;;
-      therapy)       ASSISTANT_NAME="Clinical-Assistant" ;;
-      education)     ASSISTANT_NAME="Learning-Assistant" ;;
-      construction)  ASSISTANT_NAME="Construction-Assistant" ;;
-      creative)      ASSISTANT_NAME="Creative-Assistant" ;;
-      smallbusiness) ASSISTANT_NAME="Business-Assistant" ;;
-      *)             ASSISTANT_NAME="${VERTICAL}-Assistant" ;;
+      healthcare)    ASSISTANT_NAME="healthcare-assistant" ;;
+      legal)         ASSISTANT_NAME="legal-assistant" ;;
+      financial)     ASSISTANT_NAME="financial-assistant" ;;
+      realestate)    ASSISTANT_NAME="realestate-assistant" ;;
+      therapy)       ASSISTANT_NAME="clinical-assistant" ;;
+      education)     ASSISTANT_NAME="learning-assistant" ;;
+      construction)  ASSISTANT_NAME="construction-assistant" ;;
+      creative)      ASSISTANT_NAME="creative-assistant" ;;
+      smallbusiness) ASSISTANT_NAME="business-assistant" ;;
+      *)             ASSISTANT_NAME="${VERTICAL}-assistant" ;;
     esac
 
     info "Creating ${ASSISTANT_NAME} from ${BASE_MODEL}..."
     SYSTEM_PROMPT=$(curl -fsSL "${PROMPT_URL}" 2>/dev/null || echo "")
 
     if [ -n "${SYSTEM_PROMPT}" ]; then
+      PROMPT_FILE="/tmp/joes-ai-prompt-$$"
+      printf '%s' "${SYSTEM_PROMPT}" > "${PROMPT_FILE}"
+
       MODELFILE_PATH="/tmp/joes-ai-modelfile-$$"
-      cat > "${MODELFILE_PATH}" << MODELFILE_EOF
-FROM ${BASE_MODEL}
-SYSTEM "${SYSTEM_PROMPT}"
-MODELFILE_EOF
+      printf 'FROM %s\nSYSTEM """\n' "${BASE_MODEL}" > "${MODELFILE_PATH}"
+      cat "${PROMPT_FILE}" >> "${MODELFILE_PATH}"
+      printf '\n"""\n' >> "${MODELFILE_PATH}"
 
       if ollama create "${ASSISTANT_NAME}" -f "${MODELFILE_PATH}"; then
         ok "${ASSISTANT_NAME} created successfully!"
@@ -413,7 +415,7 @@ MODELFILE_EOF
       else
         warn "Failed to create ${ASSISTANT_NAME} — client can still use ${BASE_MODEL} directly"
       fi
-      rm -f "${MODELFILE_PATH}"
+      rm -f "${MODELFILE_PATH}" "${PROMPT_FILE}"
     else
       warn "Could not download prompt for vertical '${VERTICAL}'"
       warn "Valid options: healthcare, legal, financial, realestate, therapy, education, construction, creative, smallbusiness"
@@ -826,18 +828,18 @@ preload_verticals() {
   FAILED=0
 
   for vertical in healthcare legal financial realestate therapy education construction creative smallbusiness; do
-    # Map vertical key to display name (bash 3.2 compatible — no associative arrays)
+    # Map vertical key to Ollama model name (no spaces allowed) and display name
     case "$vertical" in
-      healthcare)    DISPLAY_NAME="Healthcare Assistant" ;;
-      legal)         DISPLAY_NAME="Legal Assistant" ;;
-      financial)     DISPLAY_NAME="Financial Assistant" ;;
-      realestate)    DISPLAY_NAME="Real Estate Assistant" ;;
-      therapy)       DISPLAY_NAME="Clinical Assistant" ;;
-      education)     DISPLAY_NAME="Learning Assistant" ;;
-      construction)  DISPLAY_NAME="Construction Assistant" ;;
-      creative)      DISPLAY_NAME="Creative Assistant" ;;
-      smallbusiness) DISPLAY_NAME="Business Assistant" ;;
-      *)             DISPLAY_NAME="${vertical}" ;;
+      healthcare)    OLLAMA_NAME="healthcare-assistant";    DISPLAY_NAME="Healthcare Assistant" ;;
+      legal)         OLLAMA_NAME="legal-assistant";         DISPLAY_NAME="Legal Assistant" ;;
+      financial)     OLLAMA_NAME="financial-assistant";     DISPLAY_NAME="Financial Assistant" ;;
+      realestate)    OLLAMA_NAME="realestate-assistant";    DISPLAY_NAME="Real Estate Assistant" ;;
+      therapy)       OLLAMA_NAME="clinical-assistant";      DISPLAY_NAME="Clinical Assistant" ;;
+      education)     OLLAMA_NAME="learning-assistant";      DISPLAY_NAME="Learning Assistant" ;;
+      construction)  OLLAMA_NAME="construction-assistant";  DISPLAY_NAME="Construction Assistant" ;;
+      creative)      OLLAMA_NAME="creative-assistant";      DISPLAY_NAME="Creative Assistant" ;;
+      smallbusiness) OLLAMA_NAME="business-assistant";      DISPLAY_NAME="Business Assistant" ;;
+      *)             OLLAMA_NAME="${vertical}-assistant";    DISPLAY_NAME="${vertical}" ;;
     esac
     PROMPT_URL="${REPO_RAW}/verticals/prompts/${vertical}.txt"
 
@@ -849,21 +851,24 @@ preload_verticals() {
       continue
     fi
 
-    # Create Ollama modelfile and register the assistant
-    MODELFILE_PATH="/tmp/joes-ai-${vertical}-$$"
-    cat > "${MODELFILE_PATH}" << MODELFILE_EOF
-FROM ${BASE_MODEL}
-SYSTEM """${SYSTEM_PROMPT}"""
-MODELFILE_EOF
+    # Write system prompt to a temp file (avoids escaping issues with special chars)
+    PROMPT_FILE="/tmp/joes-ai-prompt-${vertical}-$$"
+    printf '%s' "${SYSTEM_PROMPT}" > "${PROMPT_FILE}"
 
-    if ollama create "${DISPLAY_NAME}" -f "${MODELFILE_PATH}" 2>&1; then
-      ok "  ${DISPLAY_NAME}"
+    # Create Ollama modelfile — read SYSTEM from file to avoid quoting issues
+    MODELFILE_PATH="/tmp/joes-ai-${vertical}-$$"
+    printf 'FROM %s\nSYSTEM """\n' "${BASE_MODEL}" > "${MODELFILE_PATH}"
+    cat "${PROMPT_FILE}" >> "${MODELFILE_PATH}"
+    printf '\n"""\n' >> "${MODELFILE_PATH}"
+
+    if ollama create "${OLLAMA_NAME}" -f "${MODELFILE_PATH}" 2>&1; then
+      ok "  ${DISPLAY_NAME} (${OLLAMA_NAME})"
       LOADED=$((LOADED + 1))
     else
-      warn "  Failed to create ${DISPLAY_NAME}"
+      warn "  Failed to create ${DISPLAY_NAME} (${OLLAMA_NAME})"
       FAILED=$((FAILED + 1))
     fi
-    rm -f "${MODELFILE_PATH}"
+    rm -f "${MODELFILE_PATH}" "${PROMPT_FILE}"
   done
 
   echo ""
@@ -910,7 +915,8 @@ configure_webui() {
   MODEL_CONFIG_SCRIPT=$(cat << 'PYCONFIG'
 import json, sys
 configs = {
-  "Healthcare Assistant": {
+  "healthcare-assistant": {
+    "name": "Healthcare Assistant",
     "desc": "HIPAA-aware assistant for clinical notes, treatment plans, patient communication, and medical research.",
     "prompts": [
       {"title": ["Draft a", "patient summary"], "content": "Write a professional patient summary for a 45-year-old presenting with..."},
@@ -919,7 +925,8 @@ configs = {
       {"title": ["Write a", "referral letter"], "content": "Draft a referral letter to a specialist for a patient who..."}
     ]
   },
-  "Legal Assistant": {
+  "legal-assistant": {
+    "name": "Legal Assistant",
     "desc": "Legal research, contract review, case analysis, and compliance guidance. Not a substitute for licensed counsel.",
     "prompts": [
       {"title": ["Review this", "contract clause"], "content": "Review the following contract clause and identify any risks or issues:"},
@@ -928,7 +935,8 @@ configs = {
       {"title": ["Research", "case precedent"], "content": "What are the key legal precedents related to..."}
     ]
   },
-  "Financial Assistant": {
+  "financial-assistant": {
+    "name": "Financial Assistant",
     "desc": "Financial analysis, budgeting, tax planning, and investment research. Not personalized financial advice.",
     "prompts": [
       {"title": ["Create a", "budget template"], "content": "Help me create a monthly budget template for a small business with revenue of..."},
@@ -937,7 +945,8 @@ configs = {
       {"title": ["Tax planning", "strategies"], "content": "What tax deduction strategies should a small business consider for..."}
     ]
   },
-  "Real Estate Assistant": {
+  "realestate-assistant": {
+    "name": "Real Estate Assistant",
     "desc": "Property listings, market analysis, client communications, and transaction support for agents and brokers.",
     "prompts": [
       {"title": ["Write a", "property listing"], "content": "Write a compelling MLS listing description for a 3-bed/2-bath home with..."},
@@ -946,7 +955,8 @@ configs = {
       {"title": ["Prepare", "showing notes"], "content": "Help me prepare talking points for showing a property that features..."}
     ]
   },
-  "Clinical Assistant": {
+  "clinical-assistant": {
+    "name": "Clinical Assistant",
     "desc": "Session notes, treatment planning, psychoeducation materials, and clinical documentation support.",
     "prompts": [
       {"title": ["Write", "session notes"], "content": "Help me write SOAP-format session notes for a client who discussed..."},
@@ -955,7 +965,8 @@ configs = {
       {"title": ["Draft a", "progress summary"], "content": "Write a progress summary for an insurance review for a client who has been in treatment for..."}
     ]
   },
-  "Learning Assistant": {
+  "learning-assistant": {
+    "name": "Learning Assistant",
     "desc": "Lesson planning, curriculum design, student assessments, and educational content creation.",
     "prompts": [
       {"title": ["Create a", "lesson plan"], "content": "Create a 45-minute lesson plan for teaching the concept of..."},
@@ -964,7 +975,8 @@ configs = {
       {"title": ["Parent", "communication"], "content": "Draft a professional email to parents about upcoming..."}
     ]
   },
-  "Construction Assistant": {
+  "construction-assistant": {
+    "name": "Construction Assistant",
     "desc": "Project estimates, safety compliance, scheduling, RFI responses, and construction documentation.",
     "prompts": [
       {"title": ["Draft an", "RFI response"], "content": "Help me draft a response to this Request for Information (RFI):"},
@@ -973,7 +985,8 @@ configs = {
       {"title": ["Estimate", "materials"], "content": "Help me create a rough materials estimate for..."}
     ]
   },
-  "Creative Assistant": {
+  "creative-assistant": {
+    "name": "Creative Assistant",
     "desc": "Writing, editing, brainstorming, marketing copy, social media content, and creative direction.",
     "prompts": [
       {"title": ["Write a", "blog post outline"], "content": "Create a blog post outline about the topic of..."},
@@ -982,7 +995,8 @@ configs = {
       {"title": ["Write", "email copy"], "content": "Write a compelling email newsletter promoting..."}
     ]
   },
-  "Business Assistant": {
+  "business-assistant": {
+    "name": "Business Assistant",
     "desc": "Business planning, marketing strategy, operations, customer service templates, and growth tactics.",
     "prompts": [
       {"title": ["Write a", "business plan section"], "content": "Help me write the executive summary for a business that..."},
@@ -997,7 +1011,7 @@ if model_id in configs:
     c = configs[model_id]
     payload = {
         "id": model_id,
-        "name": model_id,
+        "name": c["name"],
         "meta": {"description": c["desc"], "suggestion_prompts": c["prompts"]},
         "base_model_id": model_id,
         "params": {}
@@ -1008,15 +1022,15 @@ PYCONFIG
 
   for vertical in healthcare legal financial realestate therapy education construction creative smallbusiness; do
     case "$vertical" in
-      healthcare)    MODEL_ID="Healthcare Assistant" ;;
-      legal)         MODEL_ID="Legal Assistant" ;;
-      financial)     MODEL_ID="Financial Assistant" ;;
-      realestate)    MODEL_ID="Real Estate Assistant" ;;
-      therapy)       MODEL_ID="Clinical Assistant" ;;
-      education)     MODEL_ID="Learning Assistant" ;;
-      construction)  MODEL_ID="Construction Assistant" ;;
-      creative)      MODEL_ID="Creative Assistant" ;;
-      smallbusiness) MODEL_ID="Business Assistant" ;;
+      healthcare)    MODEL_ID="healthcare-assistant" ;;
+      legal)         MODEL_ID="legal-assistant" ;;
+      financial)     MODEL_ID="financial-assistant" ;;
+      realestate)    MODEL_ID="realestate-assistant" ;;
+      therapy)       MODEL_ID="clinical-assistant" ;;
+      education)     MODEL_ID="learning-assistant" ;;
+      construction)  MODEL_ID="construction-assistant" ;;
+      creative)      MODEL_ID="creative-assistant" ;;
+      smallbusiness) MODEL_ID="business-assistant" ;;
     esac
 
     PAYLOAD=$(echo "${MODEL_CONFIG_SCRIPT}" | "$PYTHON_CMD" - "${MODEL_ID}" 2>/dev/null || echo "")
