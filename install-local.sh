@@ -853,10 +853,10 @@ preload_verticals() {
     MODELFILE_PATH="/tmp/joes-ai-${vertical}-$$"
     cat > "${MODELFILE_PATH}" << MODELFILE_EOF
 FROM ${BASE_MODEL}
-SYSTEM ${SYSTEM_PROMPT}
+SYSTEM """${SYSTEM_PROMPT}"""
 MODELFILE_EOF
 
-    if ollama create "${DISPLAY_NAME}" -f "${MODELFILE_PATH}" >/dev/null 2>&1; then
+    if ollama create "${DISPLAY_NAME}" -f "${MODELFILE_PATH}" 2>&1; then
       ok "  ${DISPLAY_NAME}"
       LOADED=$((LOADED + 1))
     else
