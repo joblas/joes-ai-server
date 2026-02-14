@@ -905,56 +905,141 @@ configure_webui() {
     return
   fi
 
-  # Set descriptions for each vertical assistant
+  # Set descriptions + suggestion prompts for each vertical assistant
+  # Uses a Python helper to build clean JSON (avoids escaping nightmares in bash)
+  MODEL_CONFIG_SCRIPT=$(cat << 'PYCONFIG'
+import json, sys
+configs = {
+  "Healthcare Assistant": {
+    "desc": "HIPAA-aware assistant for clinical notes, treatment plans, patient communication, and medical research.",
+    "prompts": [
+      {"title": ["Draft a", "patient summary"], "content": "Write a professional patient summary for a 45-year-old presenting with..."},
+      {"title": ["Explain this", "diagnosis simply"], "content": "Explain the following diagnosis in plain language a patient can understand:"},
+      {"title": ["Create a", "treatment plan"], "content": "Help me create a treatment plan outline for a patient with..."},
+      {"title": ["Write a", "referral letter"], "content": "Draft a referral letter to a specialist for a patient who..."}
+    ]
+  },
+  "Legal Assistant": {
+    "desc": "Legal research, contract review, case analysis, and compliance guidance. Not a substitute for licensed counsel.",
+    "prompts": [
+      {"title": ["Review this", "contract clause"], "content": "Review the following contract clause and identify any risks or issues:"},
+      {"title": ["Summarize this", "legal concept"], "content": "Explain the following legal concept in plain language for a client:"},
+      {"title": ["Draft a", "demand letter"], "content": "Help me draft a professional demand letter regarding..."},
+      {"title": ["Research", "case precedent"], "content": "What are the key legal precedents related to..."}
+    ]
+  },
+  "Financial Assistant": {
+    "desc": "Financial analysis, budgeting, tax planning, and investment research. Not personalized financial advice.",
+    "prompts": [
+      {"title": ["Create a", "budget template"], "content": "Help me create a monthly budget template for a small business with revenue of..."},
+      {"title": ["Explain this", "financial term"], "content": "Explain the following financial concept in simple terms:"},
+      {"title": ["Analyze", "cash flow"], "content": "Help me analyze the cash flow for a business with these numbers:"},
+      {"title": ["Tax planning", "strategies"], "content": "What tax deduction strategies should a small business consider for..."}
+    ]
+  },
+  "Real Estate Assistant": {
+    "desc": "Property listings, market analysis, client communications, and transaction support for agents and brokers.",
+    "prompts": [
+      {"title": ["Write a", "property listing"], "content": "Write a compelling MLS listing description for a 3-bed/2-bath home with..."},
+      {"title": ["Draft a", "client email"], "content": "Write a professional email to a buyer who just had their offer rejected on..."},
+      {"title": ["Market analysis", "summary"], "content": "Summarize the key market trends I should share with a seller in a neighborhood where..."},
+      {"title": ["Prepare", "showing notes"], "content": "Help me prepare talking points for showing a property that features..."}
+    ]
+  },
+  "Clinical Assistant": {
+    "desc": "Session notes, treatment planning, psychoeducation materials, and clinical documentation support.",
+    "prompts": [
+      {"title": ["Write", "session notes"], "content": "Help me write SOAP-format session notes for a client who discussed..."},
+      {"title": ["Create a", "psychoeducation handout"], "content": "Create a client-friendly handout explaining the basics of..."},
+      {"title": ["Treatment plan", "goals"], "content": "Help me write measurable treatment plan goals for a client presenting with..."},
+      {"title": ["Draft a", "progress summary"], "content": "Write a progress summary for an insurance review for a client who has been in treatment for..."}
+    ]
+  },
+  "Learning Assistant": {
+    "desc": "Lesson planning, curriculum design, student assessments, and educational content creation.",
+    "prompts": [
+      {"title": ["Create a", "lesson plan"], "content": "Create a 45-minute lesson plan for teaching the concept of..."},
+      {"title": ["Write", "assessment questions"], "content": "Write 10 varied assessment questions (multiple choice, short answer, essay) for..."},
+      {"title": ["Differentiate", "instruction"], "content": "How can I differentiate this lesson for students at different reading levels:"},
+      {"title": ["Parent", "communication"], "content": "Draft a professional email to parents about upcoming..."}
+    ]
+  },
+  "Construction Assistant": {
+    "desc": "Project estimates, safety compliance, scheduling, RFI responses, and construction documentation.",
+    "prompts": [
+      {"title": ["Draft an", "RFI response"], "content": "Help me draft a response to this Request for Information (RFI):"},
+      {"title": ["Create a", "safety checklist"], "content": "Create a job site safety checklist for a project involving..."},
+      {"title": ["Write a", "project scope"], "content": "Help me write a scope of work for a residential renovation that includes..."},
+      {"title": ["Estimate", "materials"], "content": "Help me create a rough materials estimate for..."}
+    ]
+  },
+  "Creative Assistant": {
+    "desc": "Writing, editing, brainstorming, marketing copy, social media content, and creative direction.",
+    "prompts": [
+      {"title": ["Write a", "blog post outline"], "content": "Create a blog post outline about the topic of..."},
+      {"title": ["Social media", "content ideas"], "content": "Give me 5 engaging social media post ideas for a business that..."},
+      {"title": ["Edit this", "for clarity"], "content": "Edit the following text for clarity, tone, and impact:"},
+      {"title": ["Write", "email copy"], "content": "Write a compelling email newsletter promoting..."}
+    ]
+  },
+  "Business Assistant": {
+    "desc": "Business planning, marketing strategy, operations, customer service templates, and growth tactics.",
+    "prompts": [
+      {"title": ["Write a", "business plan section"], "content": "Help me write the executive summary for a business that..."},
+      {"title": ["Customer", "response template"], "content": "Write a professional response to a customer who is unhappy about..."},
+      {"title": ["Marketing", "strategy ideas"], "content": "Suggest 5 low-cost marketing strategies for a local business that..."},
+      {"title": ["Improve my", "operations"], "content": "How can I streamline operations for a small business that currently..."}
+    ]
+  }
+}
+model_id = sys.argv[1]
+if model_id in configs:
+    c = configs[model_id]
+    payload = {
+        "id": model_id,
+        "name": model_id,
+        "meta": {"description": c["desc"], "suggestion_prompts": c["prompts"]},
+        "base_model_id": model_id,
+        "params": {}
+    }
+    print(json.dumps(payload))
+PYCONFIG
+  )
+
   for vertical in healthcare legal financial realestate therapy education construction creative smallbusiness; do
     case "$vertical" in
-      healthcare)
-        MODEL_ID="Healthcare Assistant"
-        DESC="HIPAA-aware assistant for clinical notes, treatment plans, patient communication, and medical research." ;;
-      legal)
-        MODEL_ID="Legal Assistant"
-        DESC="Legal research, contract review, case analysis, and compliance guidance. Not a substitute for licensed counsel." ;;
-      financial)
-        MODEL_ID="Financial Assistant"
-        DESC="Financial analysis, budgeting, tax planning, and investment research. Not personalized financial advice." ;;
-      realestate)
-        MODEL_ID="Real Estate Assistant"
-        DESC="Property listings, market analysis, client communications, and transaction support for agents and brokers." ;;
-      therapy)
-        MODEL_ID="Clinical Assistant"
-        DESC="Session notes, treatment planning, psychoeducation materials, and clinical documentation support." ;;
-      education)
-        MODEL_ID="Learning Assistant"
-        DESC="Lesson planning, curriculum design, student assessments, and educational content creation." ;;
-      construction)
-        MODEL_ID="Construction Assistant"
-        DESC="Project estimates, safety compliance, scheduling, RFI responses, and construction documentation." ;;
-      creative)
-        MODEL_ID="Creative Assistant"
-        DESC="Writing, editing, brainstorming, marketing copy, social media content, and creative direction." ;;
-      smallbusiness)
-        MODEL_ID="Business Assistant"
-        DESC="Business planning, marketing strategy, operations, customer service templates, and growth tactics." ;;
+      healthcare)    MODEL_ID="Healthcare Assistant" ;;
+      legal)         MODEL_ID="Legal Assistant" ;;
+      financial)     MODEL_ID="Financial Assistant" ;;
+      realestate)    MODEL_ID="Real Estate Assistant" ;;
+      therapy)       MODEL_ID="Clinical Assistant" ;;
+      education)     MODEL_ID="Learning Assistant" ;;
+      construction)  MODEL_ID="Construction Assistant" ;;
+      creative)      MODEL_ID="Creative Assistant" ;;
+      smallbusiness) MODEL_ID="Business Assistant" ;;
     esac
 
-    curl -sf -X POST "${WEBUI_URL}/api/v1/models/add" \
-      -H "Authorization: Bearer ${JWT}" \
-      -H "Content-Type: application/json" \
-      -d "{\"id\":\"${MODEL_ID}\",\"name\":\"${MODEL_ID}\",\"meta\":{\"description\":\"${DESC}\"},\"base_model_id\":\"${MODEL_ID}\",\"params\":{}}" >/dev/null 2>&1 || true
+    PAYLOAD=$(echo "${MODEL_CONFIG_SCRIPT}" | "$PYTHON_CMD" - "${MODEL_ID}" 2>/dev/null || echo "")
+    if [ -n "${PAYLOAD}" ]; then
+      curl -sf -X POST "${WEBUI_URL}/api/v1/models/add" \
+        -H "Authorization: Bearer ${JWT}" \
+        -H "Content-Type: application/json" \
+        -d "${PAYLOAD}" >/dev/null 2>&1 || true
+    fi
   done
 
-  # Set descriptions for base models
+  # Set descriptions + prompts for base models
   curl -sf -X POST "${WEBUI_URL}/api/v1/models/add" \
     -H "Authorization: Bearer ${JWT}" \
     -H "Content-Type: application/json" \
-    -d '{"id":"llama3.2:3b","name":"Llama 3.2","meta":{"description":"Fast general-purpose chat. Best for quick questions and everyday tasks."},"base_model_id":"llama3.2:3b","params":{}}' >/dev/null 2>&1 || true
+    -d '{"id":"llama3.2:3b","name":"Llama 3.2","meta":{"description":"Fast general-purpose chat. Best for quick questions and everyday tasks.","suggestion_prompts":[{"title":["Help me","write something"],"content":"Help me write a professional email about..."},{"title":["Explain","a concept"],"content":"Explain the following concept in simple terms:"},{"title":["Brainstorm","ideas for"],"content":"Give me 5 creative ideas for..."},{"title":["Summarize","this text"],"content":"Summarize the following text in 3 bullet points:"}]},"base_model_id":"llama3.2:3b","params":{}}' >/dev/null 2>&1 || true
 
   curl -sf -X POST "${WEBUI_URL}/api/v1/models/add" \
     -H "Authorization: Bearer ${JWT}" \
     -H "Content-Type: application/json" \
-    -d '{"id":"gemma3:4b","name":"Gemma 3 Vision","meta":{"description":"Upload images, screenshots, or documents and ask questions about them."},"base_model_id":"gemma3:4b","params":{}}' >/dev/null 2>&1 || true
+    -d '{"id":"gemma3:4b","name":"Gemma 3 Vision","meta":{"description":"Upload images, screenshots, or documents and ask questions about them.","suggestion_prompts":[{"title":["Read this","image"],"content":"What does this image show? Describe everything you see."},{"title":["Extract text","from photo"],"content":"Extract and list all the text you can see in this image."},{"title":["Analyze this","document"],"content":"Read this document and summarize the key points."},{"title":["What is","in this photo?"],"content":"Describe what you see and answer any questions I have about it."}]},"base_model_id":"gemma3:4b","params":{}}' >/dev/null 2>&1 || true
 
-  ok "Model descriptions configured"
+  ok "Model descriptions and prompt suggestions configured"
 
   # Delete the temp admin account so customer creates their own on first visit
   if [ -n "${TEMP_USER_ID}" ]; then
