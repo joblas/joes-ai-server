@@ -21,11 +21,16 @@ A turnkey deployment toolkit for installing a private AI chat server (Ollama + O
 
 ## Quick Start
 
-### 🖥️ Local Install
+### 🖥️ Local Install (Mac / Linux)
 
-**Prerequisites:** [Docker Desktop](https://docs.docker.com/get-docker/) installed and running.
+**No Docker required.** The installer handles everything automatically:
+- Installs Homebrew (macOS) if needed
+- Installs Python 3 if needed
+- Installs Ollama natively
+- Installs Open WebUI in a Python virtual environment
+- Auto-detects your hardware and picks the best AI models
+- Sets up auto-start on login
 
-**Mac / Linux:**
 ```bash
 curl -fsSL https://raw.githubusercontent.com/joblas/joes-ai-server/main/install-local.sh | bash
 ```
@@ -36,6 +41,23 @@ irm https://raw.githubusercontent.com/joblas/joes-ai-server/main/install-local.p
 ```
 
 Then open **http://localhost:3000** and create your admin account.
+
+**Options (environment variables):**
+
+```bash
+# Use a different port
+WEBUI_PORT=8080 curl -fsSL https://raw.githubusercontent.com/joblas/joes-ai-server/main/install-local.sh | bash
+
+# Skip model downloads (just install the server)
+SKIP_MODELS=true curl -fsSL https://raw.githubusercontent.com/joblas/joes-ai-server/main/install-local.sh | bash
+
+# Override auto-detected model
+PULL_MODEL=llama3.2 curl -fsSL https://raw.githubusercontent.com/joblas/joes-ai-server/main/install-local.sh | bash
+
+# Install with an industry-specific AI assistant
+VERTICAL=healthcare curl -fsSL https://raw.githubusercontent.com/joblas/joes-ai-server/main/install-local.sh | bash
+# Verticals: healthcare, legal, financial, realestate, therapy, education, construction, creative, smallbusiness
+```
 
 ### ☁️ VPS Install (Hostinger / Any Ubuntu VPS)
 
@@ -66,6 +88,29 @@ Then visit **https://ai.yourclient.com** once DNS propagates.
 ---
 
 ## Architecture
+
+### Local Install (Native)
+
+```
+┌─────────────────────────────────────────────┐
+│              Client Browser                  │
+│          http://localhost:3000               │
+└──────────────────┬──────────────────────────┘
+                   │
+┌──────────────────▼──────────────────────────┐
+│         Open WebUI (:3000)                   │
+│    Chat UI · RAG · User Management           │
+│    (Python venv: ~/.joes-ai/venv)            │
+└──────────────────┬──────────────────────────┘
+                   │
+┌──────────────────▼──────────────────────────┐
+│            Ollama (:11434)                   │
+│     LLM Inference · Model Management         │
+│     (Native install via Homebrew/curl)       │
+└─────────────────────────────────────────────┘
+```
+
+### VPS Install (Docker)
 
 ```
 ┌─────────────────────────────────────────────┐
@@ -108,6 +153,30 @@ For VPS: Hostinger KVM 2 (8 GB RAM, $12/mo) is the sweet spot for small business
 
 ## Management Commands
 
+### Local Install
+
+```bash
+# Start server
+~/.joes-ai/start-server.sh
+
+# Stop server
+~/.joes-ai/stop-server.sh
+
+# List downloaded models
+ollama list
+
+# Pull a new model
+ollama pull qwen3:4b
+
+# Remove a model
+ollama rm <model-name>
+
+# View logs (macOS)
+cat ~/.joes-ai/logs/webui-stderr.log
+```
+
+### VPS Install
+
 ```bash
 # Check status
 cd /opt/joes-ai-stack && docker compose ps
@@ -127,7 +196,7 @@ docker exec ollama ollama list
 # Restart stack
 docker compose restart
 
-# Full backup (VPS)
+# Full backup
 /opt/joes-ai-stack/scripts/backup.sh
 ```
 
