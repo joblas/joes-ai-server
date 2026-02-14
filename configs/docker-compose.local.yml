@@ -1,6 +1,15 @@
-# Joe's AI Server — Local Computer Configuration
-# This is embedded in the install-local.sh script via docker run
-# Provided here for reference if someone prefers docker compose locally
+# ⚠️  DEPRECATED — Local installs are now native (no Docker)
+#
+# The local installer (install-local.sh / install-local.ps1) now installs
+# Ollama and Open WebUI natively using Homebrew + pip (Mac/Linux) or
+# winget + pip (Windows). Docker is NOT required for local installs.
+#
+# This file is kept only for reference or for users who prefer Docker.
+# To use it: docker compose -f configs/docker-compose.local.yml up -d
+#
+# For the recommended native install, run:
+#   Mac/Linux:  curl -fsSL https://raw.githubusercontent.com/joblas/joes-ai-server/main/install-local.sh | bash
+#   Windows:    irm https://raw.githubusercontent.com/joblas/joes-ai-server/main/install-local.ps1 | iex
 
 services:
   joes-ai-local:

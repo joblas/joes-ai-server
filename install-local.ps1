@@ -1,8 +1,9 @@
 #
 # Joe's Tech Solutions — Local AI Server Installer (Windows)
+# NATIVE install — no Docker required
 # Auto-detects hardware and installs optimal AI models
 #
-# Usage (run in PowerShell):
+# Usage (run in PowerShell as Administrator):
 #   irm https://raw.githubusercontent.com/joblas/joes-ai-server/main/install-local.ps1 | iex
 #
 # Options:
@@ -18,20 +19,93 @@ $ErrorActionPreference = "Stop"
 
 # ── Config ──────────────────────────────────────────────
 $WebuiPort = if ($env:WEBUI_PORT) { $env:WEBUI_PORT } else { "3000" }
-$ContainerName = "joes-ai-local"
-$Image = "ghcr.io/open-webui/open-webui:ollama"
 $OsOverheadGB = 4
+$JoesAiDir = Join-Path $env:USERPROFILE ".joes-ai"
+$VenvDir = Join-Path $JoesAiDir "venv"
+$DataDir = Join-Path $JoesAiDir "data"
+$LogDir = Join-Path $JoesAiDir "logs"
 
 # ── Banner ──────────────────────────────────────────────
 Write-Host ""
 Write-Host "==================================================" -ForegroundColor Cyan
 Write-Host "     Joe's Tech Solutions - Local AI Server        " -ForegroundColor Cyan
 Write-Host "         Private ChatGPT Alternative               " -ForegroundColor Cyan
+Write-Host "            (Native Install)                       " -ForegroundColor Cyan
 Write-Host "==================================================" -ForegroundColor Cyan
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════
-# HARDWARE DETECTION
+# STEP 1: PREREQUISITES
+# ═══════════════════════════════════════════════════════════
+
+Write-Host "[INFO]  Checking prerequisites..." -ForegroundColor Cyan
+
+# ── Check for Python 3.11+ ──
+$pythonCmd = $null
+$pythonVersion = $null
+
+# Try python3 first, then python
+foreach ($cmd in @("python3", "python")) {
+    try {
+        $ver = & $cmd --version 2>&1
+        if ($ver -match "Python (\d+)\.(\d+)") {
+            $major = [int]$Matches[1]
+            $minor = [int]$Matches[2]
+            if ($major -eq 3 -and $minor -ge 11 -and $minor -lt 13) {
+                $pythonCmd = $cmd
+                $pythonVersion = "$major.$minor"
+                break
+            }
+        }
+    }
+    catch { }
+}
+
+if (-not $pythonCmd) {
+    Write-Host "[INFO]  Python 3.11+ not found. Installing Python 3.12 via winget..." -ForegroundColor Cyan
+    try {
+        winget install Python.Python.3.12 --accept-package-agreements --accept-source-agreements --silent
+        # Refresh PATH
+        $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH", "User")
+        Start-Sleep -Seconds 3
+
+        # Find the newly installed Python
+        foreach ($cmd in @("python3", "python")) {
+            try {
+                $ver = & $cmd --version 2>&1
+                if ($ver -match "Python (\d+)\.(\d+)") {
+                    $major = [int]$Matches[1]
+                    $minor = [int]$Matches[2]
+                    if ($major -eq 3 -and $minor -ge 11) {
+                        $pythonCmd = $cmd
+                        $pythonVersion = "$major.$minor"
+                        break
+                    }
+                }
+            }
+            catch { }
+        }
+
+        if (-not $pythonCmd) {
+            Write-Host "[ERROR] Python installation succeeded but could not find it in PATH." -ForegroundColor Red
+            Write-Host "        Please restart PowerShell and run the installer again." -ForegroundColor Red
+            exit 1
+        }
+        Write-Host "[OK]    Python $pythonVersion installed" -ForegroundColor Green
+    }
+    catch {
+        Write-Host "[ERROR] Could not install Python automatically." -ForegroundColor Red
+        Write-Host "        Please install Python 3.11 or 3.12 from https://python.org and try again." -ForegroundColor Red
+        Write-Host "        Make sure to check 'Add Python to PATH' during installation." -ForegroundColor Red
+        exit 1
+    }
+}
+else {
+    Write-Host "[OK]    Python $pythonVersion found ($pythonCmd)" -ForegroundColor Green
+}
+
+# ═══════════════════════════════════════════════════════════
+# STEP 2: HARDWARE DETECTION
 # ═══════════════════════════════════════════════════════════
 
 function Get-HardwareInfo {
@@ -73,15 +147,9 @@ function Get-HardwareInfo {
             if ($adapterRam -gt 0) {
                 $script:GpuVramGB = [math]::Floor($adapterRam / 1GB)
             }
-            if ($gpu.Name -match "NVIDIA") {
-                $script:GpuType = "nvidia"
-            }
-            elseif ($gpu.Name -match "AMD|Radeon") {
-                $script:GpuType = "amd"
-            }
-            else {
-                $script:GpuType = "integrated"
-            }
+            if ($gpu.Name -match "NVIDIA") { $script:GpuType = "nvidia" }
+            elseif ($gpu.Name -match "AMD|Radeon") { $script:GpuType = "amd" }
+            else { $script:GpuType = "integrated" }
         }
     }
 
@@ -107,7 +175,7 @@ function Get-HardwareInfo {
 }
 
 # ═══════════════════════════════════════════════════════════
-# MODEL SELECTION ENGINE
+# STEP 3: MODEL SELECTION ENGINE
 # ═══════════════════════════════════════════════════════════
 
 function Select-Models {
@@ -115,7 +183,6 @@ function Select-Models {
     $script:ModelsDescription = @()
     $script:Tier = "Custom"
 
-    # If user manually specified a model, use that
     if ($env:PULL_MODEL) {
         $script:ModelsToPull += $env:PULL_MODEL
         $script:ModelsDescription += "$($env:PULL_MODEL) (user selected)"
@@ -123,7 +190,6 @@ function Select-Models {
         return
     }
 
-    # Use GPU VRAM as primary if NVIDIA, otherwise system RAM
     if ($script:GpuType -eq "nvidia" -and $script:GpuVramGB -gt 0) {
         $computeRam = $script:GpuVramGB
         $ramSource = "GPU VRAM"
@@ -135,13 +201,11 @@ function Select-Models {
 
     Write-Host "[INFO]  Selecting optimal models based on ${ramSource}: ${computeRam} GB available..." -ForegroundColor Cyan
 
-    # ── Tier 1: Minimal (< 6 GB) ──
     if ($computeRam -lt 6) {
         $script:ModelsToPull += "qwen3:4b"
         $script:ModelsDescription += "qwen3:4b     (2.6 GB) - Rivals 72B quality"
         $script:Tier = "Starter"
     }
-    # ── Tier 2: Light (6-9 GB) ──
     elseif ($computeRam -lt 10) {
         $script:ModelsToPull += "qwen3:8b"
         $script:ModelsToPull += "nomic-embed-text"
@@ -149,7 +213,6 @@ function Select-Models {
         $script:ModelsDescription += "nomic-embed  (0.3 GB) - Document search (RAG)"
         $script:Tier = "Standard"
     }
-    # ── Tier 3: Capable (10-19 GB) ──
     elseif ($computeRam -lt 20) {
         $script:ModelsToPull += "gemma3:12b"
         $script:ModelsToPull += "deepseek-r1:8b"
@@ -159,7 +222,6 @@ function Select-Models {
         $script:ModelsDescription += "nomic-embed    (0.3 GB) - Document search (RAG)"
         $script:Tier = "Performance"
     }
-    # ── Tier 4: Strong (20-45 GB) ──
     elseif ($computeRam -lt 46) {
         $script:ModelsToPull += "qwen3:32b"
         $script:ModelsToPull += "deepseek-r1:14b"
@@ -169,7 +231,6 @@ function Select-Models {
         $script:ModelsDescription += "nomic-embed     (0.3 GB) - Document search (RAG)"
         $script:Tier = "Power"
     }
-    # ── Tier 5: Beast (46+ GB) ──
     else {
         $script:ModelsToPull += "qwen3:32b"
         $script:ModelsToPull += "gemma3:27b"
@@ -182,7 +243,6 @@ function Select-Models {
         $script:Tier = "Maximum"
     }
 
-    # ── Print selection ──
     Write-Host ""
     Write-Host "  +-----------------------------------------------------+" -ForegroundColor White
     Write-Host "  |  AI MODEL PLAN - $($script:Tier) Tier" -ForegroundColor White
@@ -198,86 +258,94 @@ function Select-Models {
 # MAIN INSTALLATION
 # ═══════════════════════════════════════════════════════════
 
-# ── Step 1: Check Docker ───────────────────────────────
-Write-Host "[INFO]  Checking Docker installation..." -ForegroundColor Cyan
-
-try {
-    $dockerVersion = docker version --format '{{.Server.Version}}' 2>&1
-    if ($LASTEXITCODE -ne 0) { throw "Docker not responding" }
-    Write-Host "[OK]    Docker is running (v$dockerVersion)" -ForegroundColor Green
-}
-catch {
-    $dockerPath = Get-Command docker -ErrorAction SilentlyContinue
-    if ($dockerPath) {
-        Write-Host "[ERROR] Docker is installed but not running." -ForegroundColor Red
-        Write-Host "        Please launch Docker Desktop and wait for it to say 'Running'." -ForegroundColor Red
-    }
-    else {
-        Write-Host "[ERROR] Docker Desktop is not installed." -ForegroundColor Red
-        Write-Host "        Download it from: https://docs.docker.com/get-docker/" -ForegroundColor Red
-    }
-    Write-Host "        Then run this script again." -ForegroundColor Red
-    exit 1
-}
-
-# ── Step 2: Detect hardware ────────────────────────────
+# ── Step 1: Detect hardware ────────────────────────────
 Get-HardwareInfo
 
-# ── Step 3: Select optimal models ──────────────────────
+# ── Step 2: Select optimal models ──────────────────────
 if ($env:SKIP_MODELS -ne "true") {
     Select-Models
 }
 
-# ── Step 4: Pull image ─────────────────────────────────
-Write-Host "[INFO]  Pulling latest Open WebUI + Ollama image..." -ForegroundColor Cyan
-Write-Host "        (This may take a few minutes on first run)" -ForegroundColor Cyan
-docker pull $Image
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "[ERROR] Failed to pull image. Check your internet connection." -ForegroundColor Red
-    exit 1
+# ── Step 3: Install Ollama ─────────────────────────────
+Write-Host "[INFO]  Checking Ollama installation..." -ForegroundColor Cyan
+
+$ollamaCmd = Get-Command ollama -ErrorAction SilentlyContinue
+if ($ollamaCmd) {
+    $ollamaVer = ollama --version 2>&1
+    Write-Host "[OK]    Ollama already installed: $ollamaVer" -ForegroundColor Green
 }
-Write-Host "[OK]    Image pulled successfully" -ForegroundColor Green
-
-# ── Step 5: Stop existing container if present ─────────
-$existing = docker ps -a --format '{{.Names}}' 2>$null | Where-Object { $_ -eq $ContainerName }
-if ($existing) {
-    Write-Host "[INFO]  Existing '$ContainerName' container found. Updating..." -ForegroundColor Cyan
-    docker stop $ContainerName 2>$null | Out-Null
-    docker rm $ContainerName 2>$null | Out-Null
-    Write-Host "[OK]    Old container removed (data volumes preserved)" -ForegroundColor Green
-}
-
-# ── Step 6: Start container ────────────────────────────
-Write-Host "[INFO]  Starting AI server on port $WebuiPort..." -ForegroundColor Cyan
-docker run -d `
-    -p "${WebuiPort}:8080" `
-    -v joes-ai-ollama:/root/.ollama `
-    -v joes-ai-webui:/app/backend/data `
-    --name $ContainerName `
-    --restart unless-stopped `
-    $Image
-
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "[ERROR] Failed to start container." -ForegroundColor Red
-    Write-Host "        Check if port $WebuiPort is already in use." -ForegroundColor Red
-    exit 1
-}
-Write-Host "[OK]    Container started" -ForegroundColor Green
-
-# ── Step 7: Wait for Ollama to be ready ────────────────
-Write-Host "[INFO]  Waiting for Ollama to initialize..." -ForegroundColor Cyan
-Start-Sleep -Seconds 8
-
-for ($i = 0; $i -lt 20; $i++) {
+else {
+    Write-Host "[INFO]  Installing Ollama..." -ForegroundColor Cyan
     try {
-        docker exec $ContainerName ollama list 2>$null | Out-Null
-        if ($LASTEXITCODE -eq 0) { break }
+        # Download and run the Ollama installer silently
+        $ollamaInstaller = Join-Path $env:TEMP "OllamaSetup.exe"
+        Invoke-WebRequest -Uri "https://ollama.com/download/OllamaSetup.exe" -OutFile $ollamaInstaller -UseBasicParsing
+        Start-Process -FilePath $ollamaInstaller -ArgumentList "/SILENT" -Wait
+        Remove-Item $ollamaInstaller -Force -ErrorAction SilentlyContinue
+
+        # Refresh PATH
+        $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH", "User")
+        Start-Sleep -Seconds 3
+
+        if (-not (Get-Command ollama -ErrorAction SilentlyContinue)) {
+            # Common Ollama install paths
+            $ollamaPaths = @(
+                "$env:LOCALAPPDATA\Programs\Ollama",
+                "$env:ProgramFiles\Ollama",
+                "$env:ProgramFiles (x86)\Ollama"
+            )
+            foreach ($p in $ollamaPaths) {
+                if (Test-Path (Join-Path $p "ollama.exe")) {
+                    $env:PATH += ";$p"
+                    break
+                }
+            }
+        }
+
+        Write-Host "[OK]    Ollama installed" -ForegroundColor Green
+    }
+    catch {
+        Write-Host "[ERROR] Failed to install Ollama automatically." -ForegroundColor Red
+        Write-Host "        Please install manually from https://ollama.com/download and re-run this script." -ForegroundColor Red
+        exit 1
+    }
+}
+
+# ── Step 4: Ensure Ollama is running ───────────────────
+Write-Host "[INFO]  Ensuring Ollama is running..." -ForegroundColor Cyan
+$ollamaRunning = $false
+for ($i = 0; $i -lt 5; $i++) {
+    try {
+        $response = Invoke-WebRequest -Uri "http://localhost:11434/api/tags" -UseBasicParsing -TimeoutSec 3 -ErrorAction SilentlyContinue
+        if ($response.StatusCode -eq 200) { $ollamaRunning = $true; break }
     }
     catch { }
-    Start-Sleep -Seconds 3
+    Start-Sleep -Seconds 2
 }
 
-# ── Step 8: Download models ────────────────────────────
+if (-not $ollamaRunning) {
+    Write-Host "[INFO]  Starting Ollama service..." -ForegroundColor Cyan
+    Start-Process "ollama" -ArgumentList "serve" -WindowStyle Hidden
+    Start-Sleep -Seconds 5
+
+    for ($i = 0; $i -lt 15; $i++) {
+        try {
+            $response = Invoke-WebRequest -Uri "http://localhost:11434/api/tags" -UseBasicParsing -TimeoutSec 3 -ErrorAction SilentlyContinue
+            if ($response.StatusCode -eq 200) { $ollamaRunning = $true; break }
+        }
+        catch { }
+        Start-Sleep -Seconds 2
+    }
+}
+
+if ($ollamaRunning) {
+    Write-Host "[OK]    Ollama is running on port 11434" -ForegroundColor Green
+}
+else {
+    Write-Host "[WARN]  Ollama may not be running yet. Continuing anyway..." -ForegroundColor Yellow
+}
+
+# ── Step 5: Download AI models ─────────────────────────
 if ($env:SKIP_MODELS -ne "true" -and $script:ModelsToPull.Count -gt 0) {
     Write-Host ""
     Write-Host "[INFO]  Downloading AI models (this will take a few minutes per model)..." -ForegroundColor Cyan
@@ -289,18 +357,18 @@ if ($env:SKIP_MODELS -ne "true" -and $script:ModelsToPull.Count -gt 0) {
     foreach ($model in $script:ModelsToPull) {
         $downloadCount++
         Write-Host "[INFO]  [$downloadCount/$downloadTotal] Downloading $model..." -ForegroundColor Cyan
-        docker exec $ContainerName ollama pull $model
+        ollama pull $model
         if ($LASTEXITCODE -eq 0) {
             Write-Host "[OK]    $model downloaded successfully" -ForegroundColor Green
         }
         else {
-            Write-Host "[WARN]  $model failed - you can pull it manually from the UI" -ForegroundColor Yellow
+            Write-Host "[WARN]  $model failed - you can pull it manually later: ollama pull $model" -ForegroundColor Yellow
         }
         Write-Host ""
     }
 }
 
-# ── Step 9: Create vertical assistant (if specified) ───
+# ── Step 6: Create vertical assistant (if specified) ───
 if ($env:VERTICAL) {
     $vertical = $env:VERTICAL.ToLower()
     $repoRaw = "https://raw.githubusercontent.com/joblas/joes-ai-server/main"
@@ -326,10 +394,10 @@ if ($env:VERTICAL) {
     try {
         $systemPrompt = (Invoke-WebRequest -Uri $promptUrl -UseBasicParsing -ErrorAction Stop).Content.Trim()
 
-        $modelfileContent = "FROM $baseModel`nSYSTEM `"$systemPrompt`""
-        docker exec $ContainerName bash -c "echo '$modelfileContent' > /tmp/Modelfile"
-        docker exec $ContainerName ollama create $assistantName -f /tmp/Modelfile
-        docker exec $ContainerName rm -f /tmp/Modelfile
+        $modelfilePath = Join-Path $env:TEMP "joes-ai-modelfile.txt"
+        "FROM $baseModel`nSYSTEM `"$systemPrompt`"" | Out-File -FilePath $modelfilePath -Encoding utf8
+        ollama create $assistantName -f $modelfilePath
+        Remove-Item $modelfilePath -Force -ErrorAction SilentlyContinue
 
         Write-Host "[OK]    $assistantName created successfully!" -ForegroundColor Green
         Write-Host "[INFO]  Your client will see '$assistantName' in their model dropdown." -ForegroundColor Cyan
@@ -340,10 +408,119 @@ if ($env:VERTICAL) {
     Write-Host ""
 }
 
-# ── Step 10: Wait for WebUI ────────────────────────────
-Write-Host "[INFO]  Waiting for Open WebUI to start..." -ForegroundColor Cyan
+# ── Step 7: Install Open WebUI ─────────────────────────
+Write-Host "[INFO]  Setting up Open WebUI..." -ForegroundColor Cyan
+
+# Create directories
+New-Item -ItemType Directory -Path $JoesAiDir -Force | Out-Null
+New-Item -ItemType Directory -Path $DataDir -Force | Out-Null
+New-Item -ItemType Directory -Path $LogDir -Force | Out-Null
+
+# Create Python virtual environment
+if (-not (Test-Path (Join-Path $VenvDir "Scripts\python.exe"))) {
+    Write-Host "[INFO]  Creating Python virtual environment..." -ForegroundColor Cyan
+    & $pythonCmd -m venv $VenvDir
+    Write-Host "[OK]    Virtual environment created at $VenvDir" -ForegroundColor Green
+}
+
+# Install Open WebUI in venv
+$venvPip = Join-Path $VenvDir "Scripts\pip.exe"
+$venvPython = Join-Path $VenvDir "Scripts\python.exe"
+
+Write-Host "[INFO]  Installing Open WebUI (this may take 1-2 minutes)..." -ForegroundColor Cyan
+& $venvPip install --upgrade pip 2>&1 | Out-Null
+& $venvPip install open-webui 2>&1 | Select-Object -Last 5
+Write-Host "[OK]    Open WebUI installed" -ForegroundColor Green
+
+# ── Step 8: Create launch/stop scripts ─────────────────
+$startScript = Join-Path $JoesAiDir "start-server.ps1"
+$startContent = @"
+# Joe's AI Server — Start Script
+`$WebuiPort = if (`$env:WEBUI_PORT) { `$env:WEBUI_PORT } else { "$WebuiPort" }
+
+Write-Host "Starting Joe's AI Server..."
+
+# Ensure Ollama is running
+`$ollamaRunning = `$false
+try {
+    `$r = Invoke-WebRequest -Uri "http://localhost:11434/api/tags" -UseBasicParsing -TimeoutSec 3 -ErrorAction SilentlyContinue
+    if (`$r.StatusCode -eq 200) { `$ollamaRunning = `$true }
+}
+catch { }
+
+if (-not `$ollamaRunning) {
+    Write-Host "Starting Ollama..."
+    Start-Process "ollama" -ArgumentList "serve" -WindowStyle Hidden
+    Start-Sleep -Seconds 5
+}
+
+# Start Open WebUI
+`$env:DATA_DIR = "$DataDir"
+Write-Host "Starting Open WebUI on port `$WebuiPort..."
+Write-Host "Open your browser: http://localhost:`$WebuiPort"
+Write-Host "Press Ctrl+C to stop the server."
+& "$VenvDir\Scripts\open-webui.exe" serve --port `$WebuiPort
+"@
+$startContent | Out-File -FilePath $startScript -Encoding utf8
+Write-Host "[OK]    Start script created: $startScript" -ForegroundColor Green
+
+$stopScript = Join-Path $JoesAiDir "stop-server.ps1"
+$stopContent = @"
+# Joe's AI Server — Stop Script
+Write-Host "Stopping Joe's AI Server..."
+Get-Process | Where-Object { `$_.ProcessName -match "open-webui" } | Stop-Process -Force -ErrorAction SilentlyContinue
+Write-Host "Open WebUI stopped."
+Write-Host "Run ~/.joes-ai/start-server.ps1 to restart."
+"@
+$stopContent | Out-File -FilePath $stopScript -Encoding utf8
+Write-Host "[OK]    Stop script created: $stopScript" -ForegroundColor Green
+
+# ── Step 9: Set up auto-start via Task Scheduler ──────
+Write-Host "[INFO]  Configuring auto-start (Windows Task Scheduler)..." -ForegroundColor Cyan
+
+try {
+    $taskName = "JoesAIServer"
+    $openWebuiExe = Join-Path $VenvDir "Scripts\open-webui.exe"
+
+    # Remove existing task if present
+    Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
+
+    $action = New-ScheduledTaskAction `
+        -Execute $openWebuiExe `
+        -Argument "serve --port $WebuiPort"
+
+    $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+
+    $settings = New-ScheduledTaskSettingsSet `
+        -AllowStartIfOnBatteries `
+        -DontStopIfGoingOnBatteries `
+        -StartWhenAvailable `
+        -RestartCount 3 `
+        -RestartInterval (New-TimeSpan -Minutes 1)
+
+    Register-ScheduledTask `
+        -TaskName $taskName `
+        -Action $action `
+        -Trigger $trigger `
+        -Settings $settings `
+        -Description "Joe's AI Server — Private ChatGPT (Open WebUI)" `
+        -RunLevel Limited | Out-Null
+
+    Write-Host "[OK]    Auto-start configured — Open WebUI will start on login" -ForegroundColor Green
+}
+catch {
+    Write-Host "[WARN]  Could not set up auto-start. You can start manually: $startScript" -ForegroundColor Yellow
+}
+
+# ── Step 10: Start server now ──────────────────────────
+Write-Host "[INFO]  Starting Open WebUI..." -ForegroundColor Cyan
+
+$env:DATA_DIR = $DataDir
+Start-Process -FilePath $openWebuiExe -ArgumentList "serve --port $WebuiPort" -WindowStyle Hidden -RedirectStandardError (Join-Path $LogDir "webui-stderr.log")
+
+# Wait for it to be ready
 $ready = $false
-for ($i = 0; $i -lt 30; $i++) {
+for ($i = 0; $i -lt 45; $i++) {
     try {
         $response = Invoke-WebRequest -Uri "http://localhost:$WebuiPort" -UseBasicParsing -TimeoutSec 3 -ErrorAction SilentlyContinue
         if ($response.StatusCode -eq 200) { $ready = $true; break }
@@ -352,10 +529,16 @@ for ($i = 0; $i -lt 30; $i++) {
     Start-Sleep -Seconds 2
 }
 
-# ── Step 10: Show installed models ─────────────────────
+if (-not $ready) {
+    Write-Host "[WARN]  Open WebUI is taking longer than expected to start." -ForegroundColor Yellow
+    Write-Host "        Check logs: Get-Content $LogDir\webui-stderr.log" -ForegroundColor Yellow
+    Write-Host "        Or start manually: $startScript" -ForegroundColor Yellow
+}
+
+# ── Show installed models ────────────────────────────
 Write-Host ""
 Write-Host "[INFO]  Installed models:" -ForegroundColor Cyan
-docker exec $ContainerName ollama list 2>$null
+ollama list 2>$null
 Write-Host ""
 
 # ── Done ───────────────────────────────────────────────
@@ -372,10 +555,13 @@ Write-Host ""
 Write-Host "  First visit: Create your admin account, then chat!" -ForegroundColor Green
 Write-Host ""
 Write-Host "  Commands (PowerShell):" -ForegroundColor Green
-Write-Host "    docker logs $ContainerName     (view logs)" -ForegroundColor Green
-Write-Host "    docker restart $ContainerName  (restart)" -ForegroundColor Green
-Write-Host "    docker stop $ContainerName     (stop server)" -ForegroundColor Green
-Write-Host "    docker exec $ContainerName ollama pull <model>" -ForegroundColor Green
+Write-Host "    ollama list                 (list models)" -ForegroundColor Green
+Write-Host "    ollama pull <model>         (download model)" -ForegroundColor Green
+Write-Host "    ollama rm <model>           (remove model)" -ForegroundColor Green
+Write-Host "    ~/.joes-ai/start-server.ps1 (start server)" -ForegroundColor Green
+Write-Host "    ~/.joes-ai/stop-server.ps1  (stop server)" -ForegroundColor Green
+Write-Host ""
+Write-Host "  Auto-start: Server starts automatically on login" -ForegroundColor Green
 Write-Host ""
 Write-Host "  Support: joe@joestechsolutions.com" -ForegroundColor Green
 Write-Host "==================================================" -ForegroundColor Green

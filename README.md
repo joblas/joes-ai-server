@@ -21,16 +21,11 @@ A turnkey deployment toolkit for installing a private AI chat server (Ollama + O
 
 ## Quick Start
 
-### 🖥️ Local Install (Mac / Linux)
+### 🖥️ Local Install
 
-**No Docker required.** The installer handles everything automatically:
-- Installs Homebrew (macOS) if needed
-- Installs Python 3 if needed
-- Installs Ollama natively
-- Installs Open WebUI in a Python virtual environment
-- Auto-detects your hardware and picks the best AI models
-- Sets up auto-start on login
+**No Docker required!** The installer handles all dependencies automatically.
 
+**Mac / Linux:**
 ```bash
 curl -fsSL https://raw.githubusercontent.com/joblas/joes-ai-server/main/install-local.sh | bash
 ```
@@ -42,22 +37,11 @@ irm https://raw.githubusercontent.com/joblas/joes-ai-server/main/install-local.p
 
 Then open **http://localhost:3000** and create your admin account.
 
-**Options (environment variables):**
-
-```bash
-# Use a different port
-WEBUI_PORT=8080 curl -fsSL https://raw.githubusercontent.com/joblas/joes-ai-server/main/install-local.sh | bash
-
-# Skip model downloads (just install the server)
-SKIP_MODELS=true curl -fsSL https://raw.githubusercontent.com/joblas/joes-ai-server/main/install-local.sh | bash
-
-# Override auto-detected model
-PULL_MODEL=llama3.2 curl -fsSL https://raw.githubusercontent.com/joblas/joes-ai-server/main/install-local.sh | bash
-
-# Install with an industry-specific AI assistant
-VERTICAL=healthcare curl -fsSL https://raw.githubusercontent.com/joblas/joes-ai-server/main/install-local.sh | bash
-# Verticals: healthcare, legal, financial, realestate, therapy, education, construction, creative, smallbusiness
-```
+**What gets installed natively:**
+- **Homebrew** (Mac) or **winget** (Windows) for package management
+- **Ollama** — AI model engine (runs directly on your hardware)
+- **Open WebUI** — Chat interface (Python pip package in a virtual environment)
+- **Auto-start** — Server launches on login (launchd on Mac, Task Scheduler on Windows, systemd on Linux)
 
 ### ☁️ VPS Install (Hostinger / Any Ubuntu VPS)
 
@@ -88,29 +72,6 @@ Then visit **https://ai.yourclient.com** once DNS propagates.
 ---
 
 ## Architecture
-
-### Local Install (Native)
-
-```
-┌─────────────────────────────────────────────┐
-│              Client Browser                  │
-│          http://localhost:3000               │
-└──────────────────┬──────────────────────────┘
-                   │
-┌──────────────────▼──────────────────────────┐
-│         Open WebUI (:3000)                   │
-│    Chat UI · RAG · User Management           │
-│    (Python venv: ~/.joes-ai/venv)            │
-└──────────────────┬──────────────────────────┘
-                   │
-┌──────────────────▼──────────────────────────┐
-│            Ollama (:11434)                   │
-│     LLM Inference · Model Management         │
-│     (Native install via Homebrew/curl)       │
-└─────────────────────────────────────────────┘
-```
-
-### VPS Install (Docker)
 
 ```
 ┌─────────────────────────────────────────────┐
@@ -153,29 +114,47 @@ For VPS: Hostinger KVM 2 (8 GB RAM, $12/mo) is the sweet spot for small business
 
 ## Management Commands
 
-### Local Install
+### Local (Mac / Linux)
 
 ```bash
-# Start server
+# Start/stop server
 ~/.joes-ai/start-server.sh
-
-# Stop server
 ~/.joes-ai/stop-server.sh
-
-# List downloaded models
-ollama list
 
 # Pull a new model
 ollama pull qwen3:4b
 
-# Remove a model
-ollama rm <model-name>
+# List downloaded models
+ollama list
 
-# View logs (macOS)
+# Remove a model
+ollama rm <model_name>
+
+# Update Open WebUI
+source ~/.joes-ai/venv/bin/activate && pip install --upgrade open-webui
+
+# Update Ollama (Mac)
+brew upgrade ollama
+
+# Check logs
 cat ~/.joes-ai/logs/webui-stderr.log
 ```
 
-### VPS Install
+### Local (Windows)
+
+```powershell
+# Start/stop server
+~\.joes-ai\start-server.ps1
+~\.joes-ai\stop-server.ps1
+
+# Pull a new model
+ollama pull qwen3:4b
+
+# List downloaded models
+ollama list
+```
+
+### VPS (Cloud)
 
 ```bash
 # Check status
@@ -213,7 +192,7 @@ joes-ai-server/
 ├── uninstall-local.ps1       # Clean uninstall for Windows
 ├── uninstall-vps.sh          # Clean uninstall for VPS
 ├── configs/
-│   ├── docker-compose.local.yml  # Simplified local-only stack
+│   ├── docker-compose.local.yml  # Legacy Docker config (local installs are now native)
 │   └── .env.example          # Environment variable template
 ├── docs/
 │   ├── CLIENT_GUIDE.md       # End-user documentation

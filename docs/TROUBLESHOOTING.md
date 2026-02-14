@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-## Common Issues
+## Local Install (Mac / Linux / Windows)
 
 ### Open WebUI shows "Model not found" or no models available
 
@@ -9,16 +9,159 @@
 **Fix:**
 ```bash
 # Check if Ollama is running
-docker exec ollama ollama list
+ollama list
 
 # If empty, pull a model
-docker exec ollama ollama pull qwen3:4b
+ollama pull qwen3:4b
 
 # If Ollama isn't responding, restart it
-docker compose restart ollama
+# Mac:
+brew services restart ollama
+# Linux:
+sudo systemctl restart ollama
+# Windows (PowerShell):
+# Stop and restart from system tray, or: ollama serve
 ```
 
 ---
+
+### "Can't connect to localhost:3000"
+
+**Check 1:** Is Open WebUI running?
+```bash
+# Mac / Linux:
+~/.joes-ai/start-server.sh
+
+# Windows (PowerShell):
+~\.joes-ai\start-server.ps1
+```
+
+**Check 2:** Is port 3000 already in use?
+```bash
+# Mac / Linux:
+lsof -i :3000
+
+# Windows (PowerShell):
+netstat -ano | findstr :3000
+```
+
+If another app is using port 3000, reinstall with a different port:
+```bash
+WEBUI_PORT=3001 curl -fsSL https://raw.githubusercontent.com/joblas/joes-ai-server/main/install-local.sh | bash
+```
+
+---
+
+### Slow responses from AI models
+
+**Cause:** The model is too large for the available RAM.
+
+**Fix:**
+- Use smaller models: `qwen3:4b` (2.6 GB) instead of larger ones
+- Check available memory: `free -h` (Linux) or Activity Monitor (Mac)
+- For 8 GB machines, stick to 4B parameter models
+- Close memory-heavy apps (Chrome tabs, etc.)
+
+---
+
+### "Ollama not running" or models not responding
+
+```bash
+# Mac — restart Ollama:
+brew services restart ollama
+
+# Linux — restart Ollama:
+sudo systemctl restart ollama
+
+# Any platform — start Ollama manually:
+ollama serve
+```
+
+---
+
+### Open WebUI won't start / errors on launch
+
+```bash
+# Check logs (Mac / Linux):
+cat ~/.joes-ai/logs/webui-stderr.log
+
+# Check logs (Windows PowerShell):
+Get-Content ~\.joes-ai\logs\webui-stderr.log
+
+# Common fix — reinstall Open WebUI:
+# Mac / Linux:
+source ~/.joes-ai/venv/bin/activate
+pip install --upgrade open-webui
+deactivate
+
+# Windows (PowerShell):
+& ~\.joes-ai\venv\Scripts\pip.exe install --upgrade open-webui
+```
+
+---
+
+### Server won't auto-start on login
+
+**Mac:**
+```bash
+launchctl load ~/Library/LaunchAgents/com.joestechsolutions.ai-server.plist
+```
+
+**Linux:**
+```bash
+systemctl --user enable joes-ai-webui.service
+systemctl --user start joes-ai-webui.service
+```
+
+**Windows:**
+Check Task Scheduler for "JoesAIServer" task. If missing, re-run the installer.
+
+---
+
+### Model download failed or corrupted
+
+```bash
+# Remove and re-download a model
+ollama rm qwen3:4b
+ollama pull qwen3:4b
+```
+
+---
+
+### Client forgot password
+
+Reset via the admin panel in Open WebUI: Admin Panel > Users > Reset password.
+
+---
+
+### Update Open WebUI
+
+```bash
+# Mac / Linux:
+source ~/.joes-ai/venv/bin/activate
+pip install --upgrade open-webui
+deactivate
+
+# Windows (PowerShell):
+& ~\.joes-ai\venv\Scripts\pip.exe install --upgrade open-webui
+```
+
+### Update Ollama
+
+```bash
+# Mac:
+brew upgrade ollama
+
+# Linux:
+curl -fsSL https://ollama.com/install.sh | sh
+
+# Windows:
+# Download latest from https://ollama.com/download or run installer again
+```
+
+---
+
+## VPS Install (Cloud)
 
 ### "Connection refused" when accessing the URL
 
@@ -62,18 +205,6 @@ Caddy needs port 80 open for the ACME challenge. Make sure no other service is u
 
 ---
 
-### Slow responses from AI models
-
-**Cause:** The VPS doesn't have enough RAM for the model, or the model is too large.
-
-**Fix:**
-- Use smaller models: `qwen3:4b` (2.6 GB) instead of larger ones
-- Check available memory: `free -h`
-- For 8GB VPS, stick to 4B–8B parameter models
-- Consider quantized models: all Ollama models use Q4 quantization by default
-
----
-
 ### Container keeps restarting
 
 ```bash
@@ -105,15 +236,9 @@ docker compose down
 docker compose up -d
 ```
 
-To prevent this, you can set Watchtower to monitor-only mode:
-```yaml
-environment:
-  - WATCHTOWER_MONITOR_ONLY=true
-```
-
 ---
 
-### Out of disk space
+### Out of disk space (VPS)
 
 ```bash
 # Check disk usage
@@ -131,7 +256,7 @@ docker exec ollama ollama rm <model_name>
 
 ---
 
-### Backup/Restore
+### Backup/Restore (VPS)
 
 **Manual backup:**
 ```bash
@@ -149,10 +274,19 @@ ls -la /opt/joes-ai-backups/
 
 ---
 
-## Quick Diagnostics Checklist
+## Quick Diagnostics
 
+### Local (Mac / Linux)
 ```bash
-# Run all checks at once
+echo "=== Ollama ===" && ollama list
+echo "=== Server ===" && curl -sf http://localhost:3000 >/dev/null && echo "Running" || echo "Not running"
+echo "=== Disk ===" && df -h /
+echo "=== Memory ===" && free -h 2>/dev/null || vm_stat 2>/dev/null
+echo "=== Logs ===" && tail -5 ~/.joes-ai/logs/webui-stderr.log 2>/dev/null
+```
+
+### VPS
+```bash
 echo "=== Docker ===" && docker compose ps
 echo "=== Disk ===" && df -h /
 echo "=== Memory ===" && free -h
@@ -165,8 +299,26 @@ echo "=== Last Backup ===" && ls -lt /opt/joes-ai-backups/ | head -5
 
 ## Emergency: Full Reinstall
 
-If everything is broken beyond repair:
+### Local (Mac / Linux)
+```bash
+# Uninstall first
+curl -fsSL https://raw.githubusercontent.com/joblas/joes-ai-server/main/uninstall-local.sh | bash
+# Choose options to delete data if desired
 
+# Then re-run installer
+curl -fsSL https://raw.githubusercontent.com/joblas/joes-ai-server/main/install-local.sh | bash
+```
+
+### Local (Windows PowerShell)
+```powershell
+# Uninstall first
+irm https://raw.githubusercontent.com/joblas/joes-ai-server/main/uninstall-local.ps1 | iex
+
+# Then re-run installer
+irm https://raw.githubusercontent.com/joblas/joes-ai-server/main/install-local.ps1 | iex
+```
+
+### VPS
 ```bash
 cd /opt/joes-ai-stack
 docker compose down -v   # WARNING: -v removes all data volumes

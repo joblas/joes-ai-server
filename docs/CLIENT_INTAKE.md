@@ -50,7 +50,7 @@ What will they primarily use the AI for?
 - [ ] **Free disk space:** _____ GB
 - [ ] **Processor:** Apple Silicon (M1/M2/M3/M4) / Intel / AMD
 - [ ] **GPU (if Linux/Windows):** NVIDIA model + VRAM / AMD / None
-- [ ] **Docker Desktop installed?** Yes / No
+- [ ] **Python 3.11+ installed?** Yes / No (installer handles this automatically)
 
 **Predicted tier:**
 | RAM | Tier | Primary Model |

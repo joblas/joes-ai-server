@@ -15,15 +15,16 @@
 #                          Options: healthcare, legal, financial, realestate,
 #                          therapy, education, construction, creative, smallbusiness
 #
+
+# Wrap everything in main() so the entire script is read into memory before
+# executing. This prevents `curl | bash` from breaking when child processes
+# (like brew) consume stdin.
+main() {
 set -euo pipefail
 
 # ── Config ──────────────────────────────────────────────
 WEBUI_PORT="${WEBUI_PORT:-3000}"
 OS_OVERHEAD_GB=4  # Reserve for OS + apps
-JOES_AI_DIR="${HOME}/.joes-ai"
-VENV_DIR="${JOES_AI_DIR}/venv"
-DATA_DIR="${JOES_AI_DIR}/data"
-LOG_DIR="${JOES_AI_DIR}/logs"
 
 # ── Colors ──────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
@@ -42,37 +43,26 @@ echo -e "${CYAN}╚════════════════════�
 echo ""
 
 # ═══════════════════════════════════════════════════════════
-# STEP 1: PREREQUISITES (Homebrew + Python 3.11)
+# STEP 1: PREREQUISITES
 # ═══════════════════════════════════════════════════════════
 
 install_prerequisites() {
   info "Step 1/8: Checking prerequisites..."
 
-  # ── macOS: Ensure Homebrew is installed and in PATH ──
+  # ── macOS: Install Homebrew if missing ──
   if [[ "$OSTYPE" == "darwin"* ]]; then
-    # Always try to add Homebrew to PATH first (handles fresh installs and new shells)
-    if [[ "$(uname -m)" == "arm64" ]]; then
-      eval "$(/opt/homebrew/bin/brew shellenv 2>/dev/null)" || true
-    else
-      eval "$(/usr/local/bin/brew shellenv 2>/dev/null)" || true
-    fi
-
     if ! command -v brew >/dev/null 2>&1; then
       info "Installing Homebrew (macOS package manager)..."
-      NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+      /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" < /dev/null
 
-      # Add Homebrew to PATH for this session and future sessions
+      # Add Homebrew to PATH for Apple Silicon
       if [[ "$(uname -m)" == "arm64" ]]; then
         eval "$(/opt/homebrew/bin/brew shellenv)"
         SHELL_PROFILE="${HOME}/.zprofile"
-      else
-        eval "$(/usr/local/bin/brew shellenv)"
-        SHELL_PROFILE="${HOME}/.bash_profile"
-      fi
-      if ! grep -q 'brew shellenv' "${SHELL_PROFILE}" 2>/dev/null; then
-        echo '' >> "${SHELL_PROFILE}"
-        echo 'eval "$('"$(command -v brew)"' shellenv)"' >> "${SHELL_PROFILE}"
-        info "Added Homebrew to ${SHELL_PROFILE}"
+        if ! grep -q 'brew shellenv' "${SHELL_PROFILE}" 2>/dev/null; then
+          echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> "${SHELL_PROFILE}"
+          info "Added Homebrew to ${SHELL_PROFILE}"
+        fi
       fi
       ok "Homebrew installed"
     else
@@ -85,50 +75,62 @@ install_prerequisites() {
     fail "curl is not installed. Please install it and try again."
   fi
 
-  # ── Find or install Python 3.11 (Open WebUI requires >=3.11, <3.13) ──
+  # ── Check for Python 3.11+ (needed for Open WebUI) ──
   PYTHON_CMD=""
 
-  # Search for compatible Python — 3.11 or 3.12 ONLY (3.13+ breaks Open WebUI)
-  for cmd in python3.11 python3.12; do
-    if command -v "$cmd" >/dev/null 2>&1; then
-      PYTHON_CMD="$(command -v "$cmd")"
-      break
-    fi
-  done
-
-  # Also check bare python3 in case it's 3.11 or 3.12
-  if [ -z "${PYTHON_CMD}" ] && command -v python3 >/dev/null 2>&1; then
-    PY_MINOR=$(python3 -c "import sys; print(sys.version_info.minor)" 2>/dev/null || echo "0")
-    if [ "$PY_MINOR" -ge 11 ] && [ "$PY_MINOR" -le 12 ]; then
-      PYTHON_CMD="$(command -v python3)"
+  # Check if any existing python3 is 3.11+
+  if command -v python3 >/dev/null 2>&1; then
+    PY_VERSION=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || echo "0.0")
+    PY_MAJOR=$(echo "$PY_VERSION" | cut -d. -f1)
+    PY_MINOR=$(echo "$PY_VERSION" | cut -d. -f2)
+    if [ "$PY_MAJOR" -eq 3 ] && [ "$PY_MINOR" -ge 11 ] && [ "$PY_MINOR" -lt 13 ]; then
+      PYTHON_CMD="python3"
+      ok "Python ${PY_VERSION} found (compatible)"
     fi
   fi
 
-  if [ -z "${PYTHON_CMD}" ]; then
+  # Check for python3.11 specifically
+  if [ -z "$PYTHON_CMD" ] && command -v python3.11 >/dev/null 2>&1; then
+    PYTHON_CMD="python3.11"
+    ok "Python 3.11 found"
+  fi
+
+  # Check for python3.12 specifically
+  if [ -z "$PYTHON_CMD" ] && command -v python3.12 >/dev/null 2>&1; then
+    PYTHON_CMD="python3.12"
+    ok "Python 3.12 found"
+  fi
+
+  # Not found — install Python 3.11
+  if [ -z "$PYTHON_CMD" ]; then
     info "Installing Python 3.11 (required by Open WebUI)..."
     if [[ "$OSTYPE" == "darwin"* ]]; then
-      brew install python@3.11
-      # Find the installed binary
-      for path in /opt/homebrew/bin/python3.11 /usr/local/bin/python3.11; do
-        if [ -x "$path" ]; then
-          PYTHON_CMD="$path"
-          break
-        fi
-      done
-      [ -z "${PYTHON_CMD}" ] && PYTHON_CMD="$(brew --prefix python@3.11)/bin/python3.11"
+      brew install python@3.11 < /dev/null
+      # python3.11 is now available via Homebrew
+      if command -v python3.11 >/dev/null 2>&1; then
+        PYTHON_CMD="python3.11"
+      elif command -v /opt/homebrew/bin/python3.11 >/dev/null 2>&1; then
+        PYTHON_CMD="/opt/homebrew/bin/python3.11"
+      else
+        # Homebrew may install it as python3
+        PYTHON_CMD="python3"
+      fi
+      ok "Python installed: $($PYTHON_CMD --version 2>&1)"
     else
-      sudo apt-get update -qq
-      sudo apt-get install -y -qq python3.11 python3.11-venv 2>/dev/null \
-        || sudo apt-get install -y -qq python3 python3-pip python3-venv
-      PYTHON_CMD="$(command -v python3.11 || command -v python3)"
+      sudo apt-get update < /dev/null && sudo apt-get install -y python3 python3-pip python3-venv < /dev/null
+      PYTHON_CMD="python3"
+      ok "Python installed: $($PYTHON_CMD --version 2>&1)"
     fi
+  fi
 
-    if [ -z "${PYTHON_CMD}" ] || ! "${PYTHON_CMD}" --version >/dev/null 2>&1; then
-      fail "Failed to install Python 3.11. Please install it manually: brew install python@3.11"
+  # Verify the Python we found can actually create venvs
+  if ! $PYTHON_CMD -m venv --help >/dev/null 2>&1; then
+    warn "Python venv module not available. Installing..."
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+      : # Homebrew Python includes venv
+    else
+      sudo apt-get install -y python3-venv < /dev/null
     fi
-    ok "Python installed: $(${PYTHON_CMD} --version)"
-  else
-    ok "Python found: $(${PYTHON_CMD} --version)"
   fi
 }
 
@@ -220,7 +222,7 @@ select_models() {
     RAM_SOURCE="System RAM"
   fi
 
-  info "Selecting based on ${RAM_SOURCE}: ${COMPUTE_RAM} GB available..."
+  info "Selecting optimal models based on ${RAM_SOURCE}: ${COMPUTE_RAM} GB available..."
 
   if [ "${COMPUTE_RAM}" -lt 6 ]; then
     MODELS_TO_PULL+=("qwen3:4b")
@@ -286,43 +288,43 @@ select_models() {
 }
 
 # ═══════════════════════════════════════════════════════════
-# STEP 4: INSTALL OLLAMA
+# STEP 4: INSTALL OLLAMA (NATIVE)
 # ═══════════════════════════════════════════════════════════
 
 install_ollama() {
-  info "Step 4/8: Installing Ollama..."
+  info "Step 4/8: Checking Ollama installation..."
 
   if command -v ollama >/dev/null 2>&1; then
     ok "Ollama already installed: $(ollama --version 2>/dev/null || echo 'installed')"
   else
+    info "Installing Ollama..."
     if [[ "$OSTYPE" == "darwin"* ]]; then
-      brew install ollama
+      brew install ollama < /dev/null
     else
       curl -fsSL https://ollama.com/install.sh | sh
     fi
     ok "Ollama installed"
   fi
 
-  # Start Ollama service
+  info "Starting Ollama service..."
   if [[ "$OSTYPE" == "darwin"* ]]; then
-    brew services start ollama 2>/dev/null || true
+    brew services start ollama < /dev/null 2>/dev/null || true
   else
     sudo systemctl enable ollama 2>/dev/null || true
     sudo systemctl start ollama 2>/dev/null || true
   fi
 
-  # Wait for Ollama API to respond
   info "Waiting for Ollama to start..."
   for i in $(seq 1 30); do
     if curl -sf http://localhost:11434/api/tags >/dev/null 2>&1; then
       break
     fi
     if [ "$i" -eq 30 ]; then
-      fail "Ollama did not start within 60 seconds. Try: ollama serve"
+      fail "Ollama did not start within 60 seconds. Try running 'ollama serve' manually."
     fi
     sleep 2
   done
-  ok "Ollama is running"
+  ok "Ollama is running on port 11434"
 }
 
 # ═══════════════════════════════════════════════════════════
@@ -330,25 +332,25 @@ install_ollama() {
 # ═══════════════════════════════════════════════════════════
 
 download_models() {
-  if [ "${SKIP_MODELS:-false}" = "true" ] || [ ${#MODELS_TO_PULL[@]} -eq 0 ]; then
-    return
+  if [ "${SKIP_MODELS:-false}" != "true" ] && [ ${#MODELS_TO_PULL[@]} -gt 0 ]; then
+    echo ""
+    info "Step 5/8: Downloading AI models (this will take a few minutes per model)..."
+    echo ""
+
+    DOWNLOAD_COUNT=0
+    DOWNLOAD_TOTAL=${#MODELS_TO_PULL[@]}
+
+    for model in "${MODELS_TO_PULL[@]}"; do
+      DOWNLOAD_COUNT=$((DOWNLOAD_COUNT + 1))
+      info "[${DOWNLOAD_COUNT}/${DOWNLOAD_TOTAL}] Downloading ${model}..."
+      if ollama pull "${model}"; then
+        ok "${model} downloaded successfully"
+      else
+        warn "${model} failed to download — you can pull it manually later: ollama pull ${model}"
+      fi
+      echo ""
+    done
   fi
-
-  info "Step 5/8: Downloading AI models..."
-  echo ""
-
-  DOWNLOAD_COUNT=0
-  DOWNLOAD_TOTAL=${#MODELS_TO_PULL[@]}
-
-  for model in "${MODELS_TO_PULL[@]}"; do
-    DOWNLOAD_COUNT=$((DOWNLOAD_COUNT + 1))
-    info "[${DOWNLOAD_COUNT}/${DOWNLOAD_TOTAL}] Downloading ${model}..."
-    if ollama pull "${model}"; then
-      ok "${model} downloaded"
-    else
-      warn "${model} failed — pull manually later: ollama pull ${model}"
-    fi
-  done
 }
 
 # ═══════════════════════════════════════════════════════════
@@ -356,132 +358,128 @@ download_models() {
 # ═══════════════════════════════════════════════════════════
 
 create_vertical() {
-  if [ -z "${VERTICAL:-}" ]; then return; fi
+  if [ -n "${VERTICAL:-}" ]; then
+    info "Step 6/8: Creating industry-specific AI assistant..."
+    REPO_RAW="https://raw.githubusercontent.com/joblas/joes-ai-server/main"
+    PROMPT_URL="${REPO_RAW}/verticals/prompts/${VERTICAL}.txt"
+    BASE_MODEL="${MODELS_TO_PULL[0]}"
 
-  info "Step 6/8: Creating industry assistant..."
+    case "${VERTICAL}" in
+      healthcare)    ASSISTANT_NAME="Healthcare-Assistant" ;;
+      legal)         ASSISTANT_NAME="Legal-Assistant" ;;
+      financial)     ASSISTANT_NAME="Financial-Assistant" ;;
+      realestate)    ASSISTANT_NAME="RealEstate-Assistant" ;;
+      therapy)       ASSISTANT_NAME="Clinical-Assistant" ;;
+      education)     ASSISTANT_NAME="Learning-Assistant" ;;
+      construction)  ASSISTANT_NAME="Construction-Assistant" ;;
+      creative)      ASSISTANT_NAME="Creative-Assistant" ;;
+      smallbusiness) ASSISTANT_NAME="Business-Assistant" ;;
+      *)             ASSISTANT_NAME="${VERTICAL}-Assistant" ;;
+    esac
 
-  REPO_RAW="https://raw.githubusercontent.com/joblas/joes-ai-server/main"
-  PROMPT_URL="${REPO_RAW}/verticals/prompts/${VERTICAL}.txt"
-  BASE_MODEL="${MODELS_TO_PULL[0]}"
+    info "Creating ${ASSISTANT_NAME} from ${BASE_MODEL}..."
+    SYSTEM_PROMPT=$(curl -fsSL "${PROMPT_URL}" 2>/dev/null || echo "")
 
-  case "${VERTICAL}" in
-    healthcare)    ASSISTANT_NAME="Healthcare-Assistant" ;;
-    legal)         ASSISTANT_NAME="Legal-Assistant" ;;
-    financial)     ASSISTANT_NAME="Financial-Assistant" ;;
-    realestate)    ASSISTANT_NAME="RealEstate-Assistant" ;;
-    therapy)       ASSISTANT_NAME="Clinical-Assistant" ;;
-    education)     ASSISTANT_NAME="Learning-Assistant" ;;
-    construction)  ASSISTANT_NAME="Construction-Assistant" ;;
-    creative)      ASSISTANT_NAME="Creative-Assistant" ;;
-    smallbusiness) ASSISTANT_NAME="Business-Assistant" ;;
-    *)             ASSISTANT_NAME="${VERTICAL}-Assistant" ;;
-  esac
-
-  SYSTEM_PROMPT=$(curl -fsSL "${PROMPT_URL}" 2>/dev/null || echo "")
-
-  if [ -n "${SYSTEM_PROMPT}" ]; then
-    MODELFILE_PATH="/tmp/joes-ai-modelfile-$$"
-    cat > "${MODELFILE_PATH}" << MODELFILE_EOF
+    if [ -n "${SYSTEM_PROMPT}" ]; then
+      MODELFILE_PATH="/tmp/joes-ai-modelfile-$$"
+      cat > "${MODELFILE_PATH}" << MODELFILE_EOF
 FROM ${BASE_MODEL}
 SYSTEM "${SYSTEM_PROMPT}"
 MODELFILE_EOF
 
-    if ollama create "${ASSISTANT_NAME}" -f "${MODELFILE_PATH}"; then
-      ok "${ASSISTANT_NAME} created from ${BASE_MODEL}"
+      if ollama create "${ASSISTANT_NAME}" -f "${MODELFILE_PATH}"; then
+        ok "${ASSISTANT_NAME} created successfully!"
+        info "Your client will see '${ASSISTANT_NAME}' in their model dropdown."
+      else
+        warn "Failed to create ${ASSISTANT_NAME} — client can still use ${BASE_MODEL} directly"
+      fi
+      rm -f "${MODELFILE_PATH}"
     else
-      warn "Failed to create ${ASSISTANT_NAME} — use ${BASE_MODEL} directly"
+      warn "Could not download prompt for vertical '${VERTICAL}'"
+      warn "Valid options: healthcare, legal, financial, realestate, therapy, education, construction, creative, smallbusiness"
     fi
-    rm -f "${MODELFILE_PATH}"
-  else
-    warn "Could not download prompt for '${VERTICAL}'"
+    echo ""
   fi
 }
 
 # ═══════════════════════════════════════════════════════════
-# STEP 7: INSTALL OPEN WEBUI
+# STEP 7: INSTALL OPEN WEBUI (NATIVE)
 # ═══════════════════════════════════════════════════════════
 
 install_open_webui() {
-  info "Step 7/8: Installing Open WebUI..."
+  info "Step 7/8: Setting up Open WebUI..."
 
-  mkdir -p "${JOES_AI_DIR}" "${DATA_DIR}" "${LOG_DIR}"
+  VENV_DIR="${HOME}/.joes-ai/venv"
+  DATA_DIR="${HOME}/.joes-ai/data"
 
-  # Create or recreate venv with the correct Python
-  if [ -d "${VENV_DIR}" ]; then
-    # Check if existing venv has compatible Python
-    EXISTING_PY_MINOR=$("${VENV_DIR}/bin/python3" -c "import sys; print(sys.version_info.minor)" 2>/dev/null || echo "0")
-    if [ "$EXISTING_PY_MINOR" -lt 11 ] || [ "$EXISTING_PY_MINOR" -gt 12 ]; then
-      warn "Existing venv has incompatible Python 3.${EXISTING_PY_MINOR}. Rebuilding..."
-      rm -rf "${VENV_DIR}"
-    fi
-  fi
+  mkdir -p "${HOME}/.joes-ai"
+  mkdir -p "${DATA_DIR}"
 
   if [ ! -d "${VENV_DIR}" ]; then
-    info "Creating Python virtual environment with ${PYTHON_CMD}..."
-    "${PYTHON_CMD}" -m venv "${VENV_DIR}"
-    ok "Virtual environment created"
+    info "Creating Python virtual environment..."
+    $PYTHON_CMD -m venv "${VENV_DIR}"
+    ok "Virtual environment created at ${VENV_DIR}"
   fi
 
-  # Install Open WebUI
-  "${VENV_DIR}/bin/pip" install --upgrade pip -q 2>/dev/null
-  info "Installing Open WebUI (this may take 2-3 minutes on first install)..."
-  if "${VENV_DIR}/bin/pip" install open-webui 2>&1 | tail -3; then
-    ok "Open WebUI installed"
-  else
-    fail "Open WebUI installation failed. Check: ${PYTHON_CMD} --version (needs 3.11 or 3.12)"
-  fi
+  source "${VENV_DIR}/bin/activate"
+  info "Installing Open WebUI (this may take 1-2 minutes)..."
+  pip install --upgrade pip >/dev/null 2>&1
+  pip install open-webui 2>&1 | tail -5
+  ok "Open WebUI installed"
+  deactivate
 }
 
 # ═══════════════════════════════════════════════════════════
-# STEP 8: AUTO-START & LAUNCH SCRIPTS
+# STEP 8: CREATE LAUNCH SCRIPT & AUTO-START
 # ═══════════════════════════════════════════════════════════
 
 setup_autostart() {
-  info "Step 8/8: Setting up auto-start..."
+  info "Step 8/8: Configuring auto-start..."
 
-  # ── Create start script ──
-  cat > "${JOES_AI_DIR}/start-server.sh" << 'LAUNCH_INNER'
+  LAUNCH_SCRIPT="${HOME}/.joes-ai/start-server.sh"
+  VENV_DIR="${HOME}/.joes-ai/venv"
+  DATA_DIR="${HOME}/.joes-ai/data"
+
+  cat > "${LAUNCH_SCRIPT}" << LAUNCH_EOF
 #!/usr/bin/env bash
-# Load Homebrew (macOS)
-if [ -f /opt/homebrew/bin/brew ]; then
-  eval "$(/opt/homebrew/bin/brew shellenv)"
-elif [ -f /usr/local/bin/brew ]; then
-  eval "$(/usr/local/bin/brew shellenv)"
-fi
-LAUNCH_INNER
-
-  cat >> "${JOES_AI_DIR}/start-server.sh" << LAUNCH_OUTER
 WEBUI_PORT=\${WEBUI_PORT:-${WEBUI_PORT}}
 echo "Starting Joe's AI Server..."
-# Ensure Ollama is running
 if ! curl -sf http://localhost:11434/api/tags >/dev/null 2>&1; then
   echo "Starting Ollama..."
-  brew services start ollama 2>/dev/null || ollama serve &
+  if [[ "\$OSTYPE" == "darwin"* ]]; then
+    brew services start ollama 2>/dev/null || ollama serve &
+  else
+    sudo systemctl start ollama 2>/dev/null || ollama serve &
+  fi
   sleep 3
 fi
 source "${VENV_DIR}/bin/activate"
 export DATA_DIR="${DATA_DIR}"
-echo "Open WebUI running on http://localhost:\${WEBUI_PORT}"
-echo "Press Ctrl+C to stop."
+echo "Starting Open WebUI on port \${WEBUI_PORT}..."
+echo "Open your browser: http://localhost:\${WEBUI_PORT}"
+echo "Press Ctrl+C to stop the server."
 open-webui serve --port \${WEBUI_PORT}
-LAUNCH_OUTER
-  chmod +x "${JOES_AI_DIR}/start-server.sh"
+LAUNCH_EOF
+  chmod +x "${LAUNCH_SCRIPT}"
+  ok "Launch script created: ${LAUNCH_SCRIPT}"
 
-  # ── Create stop script ──
-  cat > "${JOES_AI_DIR}/stop-server.sh" << 'STOP_EOF'
+  STOP_SCRIPT="${HOME}/.joes-ai/stop-server.sh"
+  cat > "${STOP_SCRIPT}" << STOP_EOF
 #!/usr/bin/env bash
 echo "Stopping Joe's AI Server..."
 pkill -f "open-webui" 2>/dev/null || true
-echo "Stopped. Run ~/.joes-ai/start-server.sh to restart."
+echo "Open WebUI stopped."
+echo "Run ~/.joes-ai/start-server.sh to restart."
 STOP_EOF
-  chmod +x "${JOES_AI_DIR}/stop-server.sh"
-  ok "Scripts created: ~/.joes-ai/start-server.sh, ~/.joes-ai/stop-server.sh"
+  chmod +x "${STOP_SCRIPT}"
+  ok "Stop script created: ${STOP_SCRIPT}"
 
-  # ── macOS: Create launchd auto-start ──
+  # ── macOS: Create Login Item via launchd ──
   if [[ "$OSTYPE" == "darwin"* ]]; then
     PLIST_DIR="${HOME}/Library/LaunchAgents"
     PLIST_FILE="${PLIST_DIR}/com.joestechsolutions.ai-server.plist"
-    mkdir -p "${PLIST_DIR}"
+    LOG_DIR="${HOME}/.joes-ai/logs"
+    mkdir -p "${PLIST_DIR}" "${LOG_DIR}"
 
     cat > "${PLIST_FILE}" << PLIST_EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -518,7 +516,7 @@ PLIST_EOF
 
     launchctl unload "${PLIST_FILE}" 2>/dev/null || true
     launchctl load "${PLIST_FILE}"
-    ok "Auto-start on login configured (launchd)"
+    ok "Auto-start configured — Open WebUI will start on login"
 
   # ── Linux: Create systemd user service ──
   else
@@ -544,24 +542,22 @@ SERVICE_EOF
     systemctl --user daemon-reload
     systemctl --user enable joes-ai-webui.service
     systemctl --user start joes-ai-webui.service
-    ok "Auto-start configured (systemd)"
+    ok "Auto-start configured — Open WebUI runs as a systemd user service"
   fi
 }
 
 # ═══════════════════════════════════════════════════════════
-# STEP 9: VERIFY EVERYTHING WORKS
+# STEP 9: WAIT FOR WEBUI & VERIFY
 # ═══════════════════════════════════════════════════════════
 
 verify_installation() {
-  info "Verifying installation..."
-
-  # Wait for WebUI to respond
-  for i in $(seq 1 60); do
+  info "Waiting for Open WebUI to start..."
+  for i in $(seq 1 45); do
     if curl -sf "http://localhost:${WEBUI_PORT}" >/dev/null 2>&1; then
       break
     fi
-    if [ "$i" -eq 60 ]; then
-      warn "Open WebUI is still starting up. It may take a minute on first launch."
+    if [ "$i" -eq 45 ]; then
+      warn "Open WebUI is taking longer than expected to start."
       warn "Check logs: cat ~/.joes-ai/logs/webui-stderr.log"
       warn "Or start manually: ~/.joes-ai/start-server.sh"
     fi
@@ -575,7 +571,7 @@ verify_installation() {
 }
 
 # ═══════════════════════════════════════════════════════════
-# MAIN
+# MAIN — RUN ALL STEPS
 # ═══════════════════════════════════════════════════════════
 
 install_prerequisites
@@ -600,21 +596,26 @@ echo -e "${GREEN}╠════════════════════
 echo -e "${GREEN}║                                                          ║${NC}"
 echo -e "${GREEN}║  Open your browser:  http://localhost:${WEBUI_PORT}                ║${NC}"
 echo -e "${GREEN}║                                                          ║${NC}"
-echo -e "${GREEN}║  Hardware:  ${TOTAL_RAM_GB} GB RAM · ${CPU_CORES} cores · ${GPU_TYPE}              ${NC}"
+echo -e "${GREEN}║  Hardware:  ${TOTAL_RAM_GB} GB RAM · ${CPU_CORES} cores · ${GPU_TYPE} GPU         ${NC}"
 echo -e "${GREEN}║  Tier:      ${TIER:-Custom}                                        ${NC}"
 echo -e "${GREEN}║  Models:    ${#MODELS_TO_PULL[@]} installed and ready                       ${NC}"
 echo -e "${GREEN}║                                                          ║${NC}"
 echo -e "${GREEN}║  First visit: Create your admin account, then chat!      ║${NC}"
 echo -e "${GREEN}║                                                          ║${NC}"
-echo -e "${GREEN}║  Auto-start: Server starts automatically on login ✓      ║${NC}"
-echo -e "${GREEN}║                                                          ║${NC}"
 echo -e "${GREEN}║  Commands:                                               ║${NC}"
 echo -e "${GREEN}║    ~/.joes-ai/start-server.sh    (start server)          ║${NC}"
 echo -e "${GREEN}║    ~/.joes-ai/stop-server.sh     (stop server)           ║${NC}"
 echo -e "${GREEN}║    ollama list                   (list models)           ║${NC}"
-echo -e "${GREEN}║    ollama pull <model>           (add a model)           ║${NC}"
-echo -e "${GREEN}║    ollama rm <model>             (remove a model)        ║${NC}"
+echo -e "${GREEN}║    ollama pull <model>           (download model)        ║${NC}"
+echo -e "${GREEN}║    ollama rm <model>             (remove model)          ║${NC}"
+echo -e "${GREEN}║                                                          ║${NC}"
+echo -e "${GREEN}║  Auto-start: Server starts automatically on login ✓      ║${NC}"
 echo -e "${GREEN}║                                                          ║${NC}"
 echo -e "${GREEN}║  Support: joe@joestechsolutions.com                      ║${NC}"
 echo -e "${GREEN}╚══════════════════════════════════════════════════════════╝${NC}"
 echo ""
+
+} # end main()
+
+# Run main — this ensures the entire script is parsed before execution
+main "$@"
