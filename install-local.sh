@@ -433,8 +433,8 @@ install_open_webui() {
 # STEP 8: CREATE LAUNCH SCRIPT & AUTO-START
 # ═══════════════════════════════════════════════════════════
 
-setup_autostart() {
-  info "Step 8/8: Configuring auto-start..."
+create_scripts() {
+  info "Step 8/9: Creating management scripts..."
 
   LAUNCH_SCRIPT="${HOME}/.joes-ai/start-server.sh"
   VENV_DIR="${HOME}/.joes-ai/venv"
@@ -473,13 +473,75 @@ echo "Run ~/.joes-ai/start-server.sh to restart."
 STOP_EOF
   chmod +x "${STOP_SCRIPT}"
   ok "Stop script created: ${STOP_SCRIPT}"
+}
 
-  # ── macOS: Create Login Item via launchd ──
+# ═══════════════════════════════════════════════════════════
+# STEP 9: START SERVER & VERIFY (first boot)
+# ═══════════════════════════════════════════════════════════
+
+start_and_verify() {
+  info "Step 9/9: Starting Open WebUI for the first time..."
+  info "(First launch takes 2-4 minutes — initializing database and loading assets)"
+  echo ""
+
+  VENV_DIR="${HOME}/.joes-ai/venv"
+  DATA_DIR="${HOME}/.joes-ai/data"
+  LOG_DIR="${HOME}/.joes-ai/logs"
+  mkdir -p "${LOG_DIR}"
+
+  # Kill any existing Open WebUI processes
+  pkill -f "open-webui" 2>/dev/null || true
+  sleep 1
+
+  # Start Open WebUI directly in background
+  DATA_DIR="${DATA_DIR}" nohup "${VENV_DIR}/bin/open-webui" serve --port "${WEBUI_PORT}" \
+    > "${LOG_DIR}/webui-stdout.log" 2> "${LOG_DIR}/webui-stderr.log" &
+  WEBUI_PID=$!
+
+  # Wait for Open WebUI with progress indicator (up to 5 minutes)
+  MAX_WAIT=100  # 100 × 3 seconds = 5 minutes
+  READY=false
+  for i in $(seq 1 $MAX_WAIT); do
+    if curl -sf "http://localhost:${WEBUI_PORT}" >/dev/null 2>&1; then
+      READY=true
+      break
+    fi
+
+    # Check if process is still alive
+    if ! kill -0 "$WEBUI_PID" 2>/dev/null; then
+      echo ""
+      warn "Open WebUI process exited unexpectedly."
+      warn "Check logs: cat ~/.joes-ai/logs/webui-stderr.log"
+      warn "Try starting manually: ~/.joes-ai/start-server.sh"
+      break
+    fi
+
+    # Progress indicator every 3 seconds
+    ELAPSED=$((i * 3))
+    if [ $((i % 10)) -eq 0 ]; then
+      info "Still starting... (${ELAPSED}s elapsed — this is normal on first run)"
+    else
+      printf "."
+    fi
+    sleep 3
+  done
+  echo ""
+
+  if [ "$READY" = "true" ]; then
+    ok "Open WebUI is running at http://localhost:${WEBUI_PORT}"
+  else
+    warn "Open WebUI is still starting up — it may need another minute."
+    warn "Check: curl -sf http://localhost:${WEBUI_PORT} && echo 'Ready!'"
+    warn "Logs:  cat ~/.joes-ai/logs/webui-stderr.log"
+  fi
+
+  # ── Now configure auto-start for future logins ──
+  info "Configuring auto-start for future logins..."
+
   if [[ "$OSTYPE" == "darwin"* ]]; then
     PLIST_DIR="${HOME}/Library/LaunchAgents"
     PLIST_FILE="${PLIST_DIR}/com.joestechsolutions.ai-server.plist"
-    LOG_DIR="${HOME}/.joes-ai/logs"
-    mkdir -p "${PLIST_DIR}" "${LOG_DIR}"
+    mkdir -p "${PLIST_DIR}"
 
     cat > "${PLIST_FILE}" << PLIST_EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -514,9 +576,11 @@ STOP_EOF
 </plist>
 PLIST_EOF
 
+    # Don't load the plist now — Open WebUI is already running from our manual start.
+    # launchd will take over on next login. If the manual process dies, launchd picks up.
     launchctl unload "${PLIST_FILE}" 2>/dev/null || true
     launchctl load "${PLIST_FILE}"
-    ok "Auto-start configured — Open WebUI will start on login"
+    ok "Auto-start configured — Open WebUI will start automatically on login"
 
   # ── Linux: Create systemd user service ──
   else
@@ -541,28 +605,10 @@ SERVICE_EOF
 
     systemctl --user daemon-reload
     systemctl --user enable joes-ai-webui.service
-    systemctl --user start joes-ai-webui.service
-    ok "Auto-start configured — Open WebUI runs as a systemd user service"
+    # Don't start the service now — we already started it manually above.
+    # systemd will take over on next login.
+    ok "Auto-start configured — Open WebUI will start automatically on login"
   fi
-}
-
-# ═══════════════════════════════════════════════════════════
-# STEP 9: WAIT FOR WEBUI & VERIFY
-# ═══════════════════════════════════════════════════════════
-
-verify_installation() {
-  info "Waiting for Open WebUI to start..."
-  for i in $(seq 1 45); do
-    if curl -sf "http://localhost:${WEBUI_PORT}" >/dev/null 2>&1; then
-      break
-    fi
-    if [ "$i" -eq 45 ]; then
-      warn "Open WebUI is taking longer than expected to start."
-      warn "Check logs: cat ~/.joes-ai/logs/webui-stderr.log"
-      warn "Or start manually: ~/.joes-ai/start-server.sh"
-    fi
-    sleep 2
-  done
 
   echo ""
   info "Installed models:"
@@ -585,8 +631,8 @@ install_ollama
 download_models
 create_vertical
 install_open_webui
-setup_autostart
-verify_installation
+create_scripts
+start_and_verify
 
 # ── Success Banner ────────────────────────────────────────
 echo ""
