@@ -278,7 +278,7 @@ select_models() {
   echo -e "${BOLD}  ┌─────────────────────────────────────────────────────┐${NC}"
   echo -e "${BOLD}  │  AI MODEL PLAN — ${TIER} Tier                         ${NC}"
   echo -e "${BOLD}  ├─────────────────────────────────────────────────────┤${NC}"
-  for desc in "${MODELS_DESCRIPTION[@]}"; do
+  for desc in ${MODELS_DESCRIPTION[@]+"${MODELS_DESCRIPTION[@]}"}; do
   echo -e "${BOLD}  │${NC}  ✦ ${desc}"
   done
   echo -e "${BOLD}  └─────────────────────────────────────────────────────┘${NC}"
@@ -286,7 +286,7 @@ select_models() {
 
   if [ "${FREE_DISK_GB}" != "?" ]; then
     TOTAL_MODEL_GB=0
-    for model in "${MODELS_TO_PULL[@]}"; do
+    for model in ${MODELS_TO_PULL[@]+"${MODELS_TO_PULL[@]}"}; do
       case "$model" in
         llama3.2:3b)       TOTAL_MODEL_GB=$((TOTAL_MODEL_GB + 2));;
         gemma3:4b)         TOTAL_MODEL_GB=$((TOTAL_MODEL_GB + 4));;
@@ -353,7 +353,7 @@ install_ollama() {
 # ═══════════════════════════════════════════════════════════
 
 download_models() {
-  if [ "${SKIP_MODELS:-false}" != "true" ] && [ ${#MODELS_TO_PULL[@]} -gt 0 ]; then
+  if [ "${SKIP_MODELS:-false}" != "true" ] && [ "${#MODELS_TO_PULL[@]}" -gt 0 ] 2>/dev/null; then
     echo ""
     info "Step 5/9: Downloading AI models (this will take a few minutes per model)..."
     echo ""
@@ -361,7 +361,7 @@ download_models() {
     DOWNLOAD_COUNT=0
     DOWNLOAD_TOTAL=${#MODELS_TO_PULL[@]}
 
-    for model in "${MODELS_TO_PULL[@]}"; do
+    for model in ${MODELS_TO_PULL[@]+"${MODELS_TO_PULL[@]}"}; do
       DOWNLOAD_COUNT=$((DOWNLOAD_COUNT + 1))
       info "[${DOWNLOAD_COUNT}/${DOWNLOAD_TOTAL}] Downloading ${model}..."
       if ollama pull "${model}"; then
@@ -1144,7 +1144,7 @@ print(json.dumps(cfg))
   fi
 
   # ── Set default model (first chat model in the list) ──
-  if [ ${#MODELS_TO_PULL[@]} -gt 0 ]; then
+  if [ "${#MODELS_TO_PULL[@]}" -gt 0 ] 2>/dev/null; then
     info "Setting default model..."
     DEFAULT_MODEL="${MODELS_TO_PULL[0]}"
     DEFAULT_MODEL_RESPONSE=$(curl -sf -X POST "${WEBUI_URL}/api/v1/configs/models" \
@@ -1177,7 +1177,7 @@ generate_welcome_page() {
 
   # Build model table rows from MODELS_TO_PULL
   local MODEL_ROWS=""
-  for model in "${MODELS_TO_PULL[@]}"; do
+  for model in ${MODELS_TO_PULL[@]+"${MODELS_TO_PULL[@]}"}; do
     case "$model" in
       llama3.2:3b)       MODEL_ROWS="${MODEL_ROWS}<tr><td><code>llama3.2:3b</code></td><td>~2.0 GB</td><td>Fast text chat, great for 8 GB machines</td></tr>" ;;
       gemma3:4b)         MODEL_ROWS="${MODEL_ROWS}<tr><td><code>gemma3:4b</code></td><td>~3.3 GB</td><td>Vision model — reads images and documents</td></tr>" ;;
@@ -1508,7 +1508,7 @@ create_scripts
 start_and_verify
 
 # Load vertical assistants (only if WebUI started and models are available)
-if [ "${WEBUI_STARTED}" = "true" ] && [ ${#MODELS_TO_PULL[@]} -gt 0 ]; then
+if [ "${WEBUI_STARTED}" = "true" ] && [ "${#MODELS_TO_PULL[@]}" -gt 0 ] 2>/dev/null; then
   if [ -n "${VERTICAL:-}" ]; then
     # Single vertical specified via env var — load just that one (legacy support)
     create_vertical
