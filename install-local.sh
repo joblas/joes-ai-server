@@ -876,6 +876,95 @@ MODELFILE_EOF
 }
 
 # ═══════════════════════════════════════════════════════════
+# CONFIGURE OPEN WEBUI (model descriptions via temp admin)
+# ═══════════════════════════════════════════════════════════
+
+configure_webui() {
+  info "Configuring model descriptions..."
+
+  WEBUI_URL="http://localhost:${WEBUI_PORT}"
+
+  # Create a temporary admin account to access the API
+  # (first signup = admin; we'll delete it after so customer creates their own)
+  TEMP_PASS=$(LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 16 || true)
+  SIGNUP_RESPONSE=$(curl -sf -X POST "${WEBUI_URL}/api/v1/auths/signup" \
+    -H "Content-Type: application/json" \
+    -d "{\"name\":\"Setup\",\"email\":\"setup@install.local\",\"password\":\"${TEMP_PASS}\"}" 2>/dev/null || echo "")
+
+  if [ -z "${SIGNUP_RESPONSE}" ]; then
+    warn "Could not configure descriptions — customer will see models without descriptions"
+    return
+  fi
+
+  # Extract JWT + user ID (bash 3.2 compatible)
+  JWT=$(echo "${SIGNUP_RESPONSE}" | "$PYTHON_CMD" -c "import sys,json; print(json.loads(sys.stdin.read()).get('token',''))" 2>/dev/null || echo "")
+  TEMP_USER_ID=$(echo "${SIGNUP_RESPONSE}" | "$PYTHON_CMD" -c "import sys,json; print(json.loads(sys.stdin.read()).get('id',''))" 2>/dev/null || echo "")
+
+  if [ -z "${JWT}" ]; then
+    warn "Could not authenticate — descriptions skipped"
+    return
+  fi
+
+  # Set descriptions for each vertical assistant
+  for vertical in healthcare legal financial realestate therapy education construction creative smallbusiness; do
+    case "$vertical" in
+      healthcare)
+        MODEL_ID="Healthcare Assistant"
+        DESC="HIPAA-aware assistant for clinical notes, treatment plans, patient communication, and medical research." ;;
+      legal)
+        MODEL_ID="Legal Assistant"
+        DESC="Legal research, contract review, case analysis, and compliance guidance. Not a substitute for licensed counsel." ;;
+      financial)
+        MODEL_ID="Financial Assistant"
+        DESC="Financial analysis, budgeting, tax planning, and investment research. Not personalized financial advice." ;;
+      realestate)
+        MODEL_ID="Real Estate Assistant"
+        DESC="Property listings, market analysis, client communications, and transaction support for agents and brokers." ;;
+      therapy)
+        MODEL_ID="Clinical Assistant"
+        DESC="Session notes, treatment planning, psychoeducation materials, and clinical documentation support." ;;
+      education)
+        MODEL_ID="Learning Assistant"
+        DESC="Lesson planning, curriculum design, student assessments, and educational content creation." ;;
+      construction)
+        MODEL_ID="Construction Assistant"
+        DESC="Project estimates, safety compliance, scheduling, RFI responses, and construction documentation." ;;
+      creative)
+        MODEL_ID="Creative Assistant"
+        DESC="Writing, editing, brainstorming, marketing copy, social media content, and creative direction." ;;
+      smallbusiness)
+        MODEL_ID="Business Assistant"
+        DESC="Business planning, marketing strategy, operations, customer service templates, and growth tactics." ;;
+    esac
+
+    curl -sf -X POST "${WEBUI_URL}/api/v1/models/add" \
+      -H "Authorization: Bearer ${JWT}" \
+      -H "Content-Type: application/json" \
+      -d "{\"id\":\"${MODEL_ID}\",\"name\":\"${MODEL_ID}\",\"meta\":{\"description\":\"${DESC}\"},\"base_model_id\":\"${MODEL_ID}\",\"params\":{}}" >/dev/null 2>&1 || true
+  done
+
+  # Set descriptions for base models
+  curl -sf -X POST "${WEBUI_URL}/api/v1/models/add" \
+    -H "Authorization: Bearer ${JWT}" \
+    -H "Content-Type: application/json" \
+    -d '{"id":"llama3.2:3b","name":"Llama 3.2","meta":{"description":"Fast general-purpose chat. Best for quick questions and everyday tasks."},"base_model_id":"llama3.2:3b","params":{}}' >/dev/null 2>&1 || true
+
+  curl -sf -X POST "${WEBUI_URL}/api/v1/models/add" \
+    -H "Authorization: Bearer ${JWT}" \
+    -H "Content-Type: application/json" \
+    -d '{"id":"gemma3:4b","name":"Gemma 3 Vision","meta":{"description":"Upload images, screenshots, or documents and ask questions about them."},"base_model_id":"gemma3:4b","params":{}}' >/dev/null 2>&1 || true
+
+  ok "Model descriptions configured"
+
+  # Delete the temp admin account so customer creates their own on first visit
+  if [ -n "${TEMP_USER_ID}" ]; then
+    curl -sf -X DELETE "${WEBUI_URL}/api/v1/users/${TEMP_USER_ID}" \
+      -H "Authorization: Bearer ${JWT}" >/dev/null 2>&1 || true
+    ok "Temporary setup account removed — customer will create their own"
+  fi
+}
+
+# ═══════════════════════════════════════════════════════════
 # GENERATE LOCAL WELCOME PAGE
 # ═══════════════════════════════════════════════════════════
 
@@ -1047,7 +1136,7 @@ WELCOME_HTML_SUMMARY
       <div class="step">
         <div class="step-num">3</div>
         <div class="step-title">Start Chatting</div>
-        <div class="step-desc">Pick a model from the dropdown and ask anything</div>
+        <div class="step-desc">Pick an assistant from the dropdown and ask anything</div>
       </div>
     </div>
   </div>
@@ -1171,6 +1260,11 @@ fi
 
 # Refresh model count (includes verticals now)
 MODEL_COUNT=$(ollama list 2>/dev/null | tail -n +2 | wc -l | tr -d ' ' || echo "0")
+
+# Configure Open WebUI (model descriptions via temp admin)
+if [ "${WEBUI_STARTED}" = "true" ]; then
+  configure_webui
+fi
 
 generate_welcome_page
 
