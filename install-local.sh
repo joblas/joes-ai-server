@@ -1062,9 +1062,11 @@ PYCONFIG
     -H "Authorization: Bearer ${JWT}" \
     -H "Content-Type: application/json" \
     -d '{
-      "chunk": {"chunk_size": 1500, "chunk_overlap": 200},
-      "top_k": 5,
-      "file": {"max_size": 104857600, "max_count": 10}
+      "CHUNK_SIZE": 1500,
+      "CHUNK_OVERLAP": 200,
+      "TOP_K": 5,
+      "FILE_MAX_SIZE": 100,
+      "FILE_MAX_COUNT": 10
     }' 2>/dev/null || echo "")
   if [ -n "${RAG_RESPONSE}" ]; then
     ok "RAG settings configured (chunk_size=1500, top_k=5)"
@@ -1078,9 +1080,10 @@ PYCONFIG
     -H "Authorization: Bearer ${JWT}" \
     -H "Content-Type: application/json" \
     -d '{
-      "embedding_engine": "ollama",
-      "embedding_model": "nomic-embed-text",
-      "ollama_config": {"url": "http://localhost:11434"}
+      "RAG_EMBEDDING_ENGINE": "ollama",
+      "RAG_EMBEDDING_MODEL": "nomic-embed-text",
+      "ollama_config": {"url": "http://localhost:11434", "key": ""},
+      "RAG_EMBEDDING_BATCH_SIZE": 1
     }' 2>/dev/null || echo "")
   if [ -n "${EMBED_RESPONSE}" ]; then
     ok "Embedding model set to nomic-embed-text (Ollama)"
@@ -1095,11 +1098,10 @@ PYCONFIG
     -H "Content-Type: application/json" \
     -d '{
       "web": {
-        "search": {
-          "enabled": true,
-          "engine": "duckduckgo",
-          "result_count": 5
-        }
+        "ENABLE_WEB_SEARCH": true,
+        "WEB_SEARCH_ENGINE": "duckduckgo",
+        "WEB_SEARCH_RESULT_COUNT": 5,
+        "WEB_SEARCH_CONCURRENT_REQUESTS": 10
       }
     }' 2>/dev/null || echo "")
   if [ -n "${WEBSEARCH_RESPONSE}" ]; then
@@ -1109,33 +1111,51 @@ PYCONFIG
   fi
 
   # ── Configure Task generation settings ──
+  # Tasks API requires ALL fields — GET current config, merge our changes, POST back
   info "Configuring task generation..."
-  TASKS_RESPONSE=$(curl -sf -X POST "${WEBUI_URL}/api/v1/tasks/config/update" \
-    -H "Authorization: Bearer ${JWT}" \
-    -H "Content-Type: application/json" \
-    -d '{
-      "ENABLE_TITLE_GENERATION": true,
-      "ENABLE_TAGS_GENERATION": true,
-      "ENABLE_SEARCH_QUERY_GENERATION": true,
-      "ENABLE_RETRIEVAL_QUERY_GENERATION": true
-    }' 2>/dev/null || echo "")
-  if [ -n "${TASKS_RESPONSE}" ]; then
-    ok "Title, tags, and query generation enabled"
+  TASKS_CURRENT=$(curl -sf "${WEBUI_URL}/api/v1/tasks/config" \
+    -H "Authorization: Bearer ${JWT}" 2>/dev/null || echo "")
+  if [ -n "${TASKS_CURRENT}" ]; then
+    TASKS_PAYLOAD=$(echo "${TASKS_CURRENT}" | "$PYTHON_CMD" -c "
+import sys, json
+cfg = json.loads(sys.stdin.read())
+cfg['ENABLE_TITLE_GENERATION'] = True
+cfg['ENABLE_TAGS_GENERATION'] = True
+cfg['ENABLE_SEARCH_QUERY_GENERATION'] = True
+cfg['ENABLE_RETRIEVAL_QUERY_GENERATION'] = True
+cfg['ENABLE_FOLLOW_UP_GENERATION'] = True
+print(json.dumps(cfg))
+" 2>/dev/null || echo "")
+    if [ -n "${TASKS_PAYLOAD}" ]; then
+      TASKS_RESPONSE=$(curl -sf -X POST "${WEBUI_URL}/api/v1/tasks/config/update" \
+        -H "Authorization: Bearer ${JWT}" \
+        -H "Content-Type: application/json" \
+        -d "${TASKS_PAYLOAD}" 2>/dev/null || echo "")
+      if [ -n "${TASKS_RESPONSE}" ]; then
+        ok "Title, tags, and query generation enabled"
+      else
+        warn "Task generation settings could not be applied — configure manually in Admin > Interface"
+      fi
+    else
+      warn "Could not build task config payload — configure manually in Admin > Interface"
+    fi
   else
-    warn "Task generation settings could not be applied — configure manually in Admin > Interface"
+    warn "Could not read current task config — configure manually in Admin > Interface"
   fi
 
   # ── Set default model (first chat model in the list) ──
-  info "Setting default model..."
-  DEFAULT_MODEL="${MODELS_TO_PULL[0]}"
-  DEFAULT_MODEL_RESPONSE=$(curl -sf -X POST "${WEBUI_URL}/api/v1/configs/update" \
-    -H "Authorization: Bearer ${JWT}" \
-    -H "Content-Type: application/json" \
-    -d "{\"ui\":{\"default_models\":\"${DEFAULT_MODEL}\"}}" 2>/dev/null || echo "")
-  if [ -n "${DEFAULT_MODEL_RESPONSE}" ]; then
-    ok "Default model set to ${DEFAULT_MODEL}"
-  else
-    warn "Default model could not be set — customer can pick from the dropdown"
+  if [ ${#MODELS_TO_PULL[@]} -gt 0 ]; then
+    info "Setting default model..."
+    DEFAULT_MODEL="${MODELS_TO_PULL[0]}"
+    DEFAULT_MODEL_RESPONSE=$(curl -sf -X POST "${WEBUI_URL}/api/v1/configs/models" \
+      -H "Authorization: Bearer ${JWT}" \
+      -H "Content-Type: application/json" \
+      -d "{\"DEFAULT_MODELS\":\"${DEFAULT_MODEL}\"}" 2>/dev/null || echo "")
+    if [ -n "${DEFAULT_MODEL_RESPONSE}" ]; then
+      ok "Default model set to ${DEFAULT_MODEL}"
+    else
+      warn "Default model could not be set — customer can pick from the dropdown"
+    fi
   fi
 
   # Delete the temp admin account so customer creates their own on first visit
