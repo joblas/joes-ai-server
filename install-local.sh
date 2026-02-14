@@ -243,9 +243,10 @@ select_models() {
   info "Selecting optimal models based on ${RAM_SOURCE}: ${COMPUTE_RAM} GB available..."
 
   if [ "${COMPUTE_RAM}" -lt 6 ]; then
-    MODELS_TO_PULL+=("llama3.2:3b" "gemma3:4b")
+    MODELS_TO_PULL+=("llama3.2:3b" "gemma3:4b" "nomic-embed-text")
     MODELS_DESCRIPTION+=("llama3.2:3b  (2.0 GB) — Fast text chat, ideal for 8 GB machines")
     MODELS_DESCRIPTION+=("gemma3:4b    (3.3 GB) — Vision model, reads images & documents")
+    MODELS_DESCRIPTION+=("nomic-embed  (0.3 GB) — Enables document search (RAG)")
     TIER="Starter"
   elif [ "${COMPUTE_RAM}" -lt 10 ]; then
     MODELS_TO_PULL+=("qwen3:8b" "nomic-embed-text")
@@ -1054,6 +1055,88 @@ PYCONFIG
     -d '{"id":"gemma3:4b","name":"Gemma 3 Vision","meta":{"description":"Upload images, screenshots, or documents and ask questions about them.","suggestion_prompts":[{"title":["Read this","image"],"content":"What does this image show? Describe everything you see."},{"title":["Extract text","from photo"],"content":"Extract and list all the text you can see in this image."},{"title":["Analyze this","document"],"content":"Read this document and summarize the key points."},{"title":["What is","in this photo?"],"content":"Describe what you see and answer any questions I have about it."}]},"base_model_id":"gemma3:4b","params":{}}' >/dev/null 2>&1 || true
 
   ok "Model descriptions and prompt suggestions configured"
+
+  # ── Configure RAG / Document settings ──────────────────
+  info "Configuring RAG (document search) settings..."
+  RAG_RESPONSE=$(curl -sf -X POST "${WEBUI_URL}/api/v1/retrieval/config/update" \
+    -H "Authorization: Bearer ${JWT}" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "chunk": {"chunk_size": 1500, "chunk_overlap": 200},
+      "top_k": 5,
+      "file": {"max_size": 104857600, "max_count": 10}
+    }' 2>/dev/null || echo "")
+  if [ -n "${RAG_RESPONSE}" ]; then
+    ok "RAG settings configured (chunk_size=1500, top_k=5)"
+  else
+    warn "RAG settings could not be applied — configure manually in Admin > Documents"
+  fi
+
+  # ── Configure embedding model (Ollama + nomic-embed-text) ──
+  info "Configuring embedding model..."
+  EMBED_RESPONSE=$(curl -sf -X POST "${WEBUI_URL}/api/v1/retrieval/embedding/update" \
+    -H "Authorization: Bearer ${JWT}" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "embedding_engine": "ollama",
+      "embedding_model": "nomic-embed-text",
+      "ollama_config": {"url": "http://localhost:11434"}
+    }' 2>/dev/null || echo "")
+  if [ -n "${EMBED_RESPONSE}" ]; then
+    ok "Embedding model set to nomic-embed-text (Ollama)"
+  else
+    warn "Embedding model could not be set — configure manually in Admin > Documents"
+  fi
+
+  # ── Configure Web Search (DuckDuckGo — no API key needed) ──
+  info "Enabling web search..."
+  WEBSEARCH_RESPONSE=$(curl -sf -X POST "${WEBUI_URL}/api/v1/retrieval/config/update" \
+    -H "Authorization: Bearer ${JWT}" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "web": {
+        "search": {
+          "enabled": true,
+          "engine": "duckduckgo",
+          "result_count": 5
+        }
+      }
+    }' 2>/dev/null || echo "")
+  if [ -n "${WEBSEARCH_RESPONSE}" ]; then
+    ok "Web search enabled (DuckDuckGo, 5 results)"
+  else
+    warn "Web search could not be enabled — configure manually in Admin > Web Search"
+  fi
+
+  # ── Configure Task generation settings ──
+  info "Configuring task generation..."
+  TASKS_RESPONSE=$(curl -sf -X POST "${WEBUI_URL}/api/v1/tasks/config/update" \
+    -H "Authorization: Bearer ${JWT}" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "ENABLE_TITLE_GENERATION": true,
+      "ENABLE_TAGS_GENERATION": true,
+      "ENABLE_SEARCH_QUERY_GENERATION": true,
+      "ENABLE_RETRIEVAL_QUERY_GENERATION": true
+    }' 2>/dev/null || echo "")
+  if [ -n "${TASKS_RESPONSE}" ]; then
+    ok "Title, tags, and query generation enabled"
+  else
+    warn "Task generation settings could not be applied — configure manually in Admin > Interface"
+  fi
+
+  # ── Set default model (first chat model in the list) ──
+  info "Setting default model..."
+  DEFAULT_MODEL="${MODELS_TO_PULL[0]}"
+  DEFAULT_MODEL_RESPONSE=$(curl -sf -X POST "${WEBUI_URL}/api/v1/configs/update" \
+    -H "Authorization: Bearer ${JWT}" \
+    -H "Content-Type: application/json" \
+    -d "{\"ui\":{\"default_models\":\"${DEFAULT_MODEL}\"}}" 2>/dev/null || echo "")
+  if [ -n "${DEFAULT_MODEL_RESPONSE}" ]; then
+    ok "Default model set to ${DEFAULT_MODEL}"
+  else
+    warn "Default model could not be set — customer can pick from the dropdown"
+  fi
 
   # Delete the temp admin account so customer creates their own on first visit
   if [ -n "${TEMP_USER_ID}" ]; then
