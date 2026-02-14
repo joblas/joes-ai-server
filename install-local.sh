@@ -70,17 +70,44 @@ install_prerequisites() {
     fail "curl is not installed. Please install it and try again."
   fi
 
-  # ── Check for Python 3 (needed for Open WebUI) ──
-  if ! command -v python3 >/dev/null 2>&1; then
-    info "Installing Python 3..."
+  # ── Check for Python 3.11+ (needed for Open WebUI) ──
+  PYTHON_CMD=""
+
+  # Check if any Python 3.11+ is available
+  for cmd in python3.13 python3.12 python3.11 python3.14 python3; do
+    if command -v "$cmd" >/dev/null 2>&1; then
+      PY_VER=$("$cmd" -c "import sys; print(sys.version_info.minor)" 2>/dev/null || echo "0")
+      PY_MAJOR=$("$cmd" -c "import sys; print(sys.version_info.major)" 2>/dev/null || echo "0")
+      if [ "$PY_MAJOR" -eq 3 ] && [ "$PY_VER" -ge 11 ]; then
+        PYTHON_CMD="$cmd"
+        break
+      fi
+    fi
+  done
+
+  if [ -z "${PYTHON_CMD}" ]; then
+    info "Python 3.11+ required but not found. Installing Python 3.11..."
     if [[ "$OSTYPE" == "darwin"* ]]; then
       brew install python@3.11
+      # Homebrew Python paths
+      if [ -x "/opt/homebrew/bin/python3.11" ]; then
+        PYTHON_CMD="/opt/homebrew/bin/python3.11"
+      elif [ -x "/usr/local/bin/python3.11" ]; then
+        PYTHON_CMD="/usr/local/bin/python3.11"
+      else
+        PYTHON_CMD="python3.11"
+      fi
     else
-      sudo apt-get update && sudo apt-get install -y python3 python3-pip python3-venv
+      sudo apt-get update && sudo apt-get install -y python3.11 python3.11-venv python3.11-pip 2>/dev/null \
+        || sudo apt-get install -y python3 python3-pip python3-venv
+      PYTHON_CMD="python3.11"
+      if ! command -v python3.11 >/dev/null 2>&1; then
+        PYTHON_CMD="python3"
+      fi
     fi
-    ok "Python 3 installed"
+    ok "Python installed: $(${PYTHON_CMD} --version)"
   else
-    ok "Python 3 found: $(python3 --version)"
+    ok "Python found: $(${PYTHON_CMD} --version) (${PYTHON_CMD})"
   fi
 }
 
@@ -363,8 +390,8 @@ install_open_webui() {
   mkdir -p "${DATA_DIR}"
 
   if [ ! -d "${VENV_DIR}" ]; then
-    info "Creating Python virtual environment..."
-    python3 -m venv "${VENV_DIR}"
+    info "Creating Python virtual environment with ${PYTHON_CMD}..."
+    "${PYTHON_CMD}" -m venv "${VENV_DIR}"
     ok "Virtual environment created at ${VENV_DIR}"
   fi
 
