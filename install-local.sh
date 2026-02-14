@@ -1337,6 +1337,87 @@ WELCOME_HTML_STARTED
   </div>
 WELCOME_HTML_MODELS
 
+  # ── Tips & Tricks card ──
+  cat >> "${WELCOME_FILE}" << 'WELCOME_HTML_TIPS'
+  <div class="card">
+    <h2>Tips &amp; Tricks</h2>
+    <div class="troubleshooting-item">
+      <strong>Upload Documents</strong>
+      <p>Click the paperclip icon in the chat to upload PDFs, text files, or images. The AI will read and answer questions about them.</p>
+    </div>
+    <div class="troubleshooting-item">
+      <strong>Web Search</strong>
+      <p>Your AI can search the web for current information. Just ask a question about recent events or topics that need up-to-date data.</p>
+    </div>
+    <div class="troubleshooting-item">
+      <strong>Multiple Conversations</strong>
+      <p>Use the sidebar to create new chats and keep topics organized. Each conversation remembers its own context.</p>
+    </div>
+    <div class="troubleshooting-item">
+      <strong>Switch Models</strong>
+      <p>Different models have different strengths. Use the dropdown at the top of any chat to switch. Try a few to see which you prefer.</p>
+    </div>
+    <div class="troubleshooting-item">
+      <strong>Add More Users</strong>
+      <p>As admin, go to <strong>Admin Panel &rarr; Users</strong> to invite others. Each person gets their own private conversations.</p>
+    </div>
+  </div>
+WELCOME_HTML_TIPS
+
+  # ── FAQ card ──
+  cat >> "${WELCOME_FILE}" << 'WELCOME_HTML_FAQ'
+  <div class="card">
+    <h2>Frequently Asked Questions</h2>
+    <div class="troubleshooting-item">
+      <strong>Is my data private?</strong>
+      <p>Yes. Everything runs on this computer. No data is sent to OpenAI, Google, or any third party. Your conversations stay here.</p>
+    </div>
+    <div class="troubleshooting-item">
+      <strong>Can I use this offline?</strong>
+      <p>Yes &mdash; once your models are downloaded, everything works without an internet connection.</p>
+    </div>
+    <div class="troubleshooting-item">
+      <strong>How do I update?</strong>
+      <p>Your server checks for updates automatically every Wednesday at 4 AM and applies them if available.
+      To update manually, open Terminal and run: <code>~/.joes-ai/update.sh</code></p>
+    </div>
+    <div class="troubleshooting-item">
+      <strong>Can't connect to the server?</strong>
+      <p>Open Terminal and run: <code>~/.joes-ai/start-server.sh</code><br>
+      Make sure Ollama is also running: <code>brew services start ollama</code></p>
+    </div>
+    <div class="troubleshooting-item">
+      <strong>AI doesn't respond or is very slow?</strong>
+      <p>Check that a model is selected in the dropdown. Try a smaller model if responses are slow.
+      Restart the server if needed: <code>~/.joes-ai/stop-server.sh && ~/.joes-ai/start-server.sh</code></p>
+    </div>
+    <div class="troubleshooting-item">
+      <strong>Something isn't working?</strong>
+      <p>Email <a href="mailto:joe@joestechsolutions.com">joe@joestechsolutions.com</a> with a description
+      of the issue. I'll get back to you within 24 hours.</p>
+    </div>
+  </div>
+WELCOME_HTML_FAQ
+
+  # ── Security Notes card ──
+  cat >> "${WELCOME_FILE}" << 'WELCOME_HTML_SECURITY'
+  <div class="card">
+    <h2>Security Notes</h2>
+    <div class="troubleshooting-item">
+      <strong>Lock down signups</strong>
+      <p>After all your users have created accounts, ask Joe to disable open registration so no one else can sign up.</p>
+    </div>
+    <div class="troubleshooting-item">
+      <strong>Use strong passwords</strong>
+      <p>Choose a unique, strong password for your admin account. This is the key to your entire AI server.</p>
+    </div>
+    <div class="troubleshooting-item">
+      <strong>Keep your server URL private</strong>
+      <p>Don't share your server address publicly unless you want strangers creating accounts.</p>
+    </div>
+  </div>
+WELCOME_HTML_SECURITY
+
   # ── Quick Reference card ──
   cat >> "${WELCOME_FILE}" << 'WELCOME_HTML_CMDS'
   <div class="card">
@@ -1369,33 +1450,6 @@ WELCOME_HTML_MODELS
     </div>
   </div>
 WELCOME_HTML_CMDS
-
-  # ── Troubleshooting card ──
-  cat >> "${WELCOME_FILE}" << 'WELCOME_HTML_TROUBLE'
-  <div class="card">
-    <h2>Troubleshooting</h2>
-    <div class="troubleshooting-item">
-      <strong>Can't connect to the server?</strong>
-      <p>Open Terminal and run: <code>~/.joes-ai/start-server.sh</code><br>
-      Make sure Ollama is also running: <code>brew services start ollama</code></p>
-    </div>
-    <div class="troubleshooting-item">
-      <strong>AI doesn't respond or is very slow?</strong>
-      <p>Check that a model is selected in the dropdown. Try a smaller model if responses are slow.
-      Restart the server if needed: <code>~/.joes-ai/stop-server.sh && ~/.joes-ai/start-server.sh</code></p>
-    </div>
-    <div class="troubleshooting-item">
-      <strong>Need to reinstall?</strong>
-      <p>You can safely re-run the installer at any time &mdash; it won't delete your chats or settings:<br>
-      <code>curl -fsSL https://raw.githubusercontent.com/joblas/joes-ai-server/main/install-local.sh | bash</code></p>
-    </div>
-    <div class="troubleshooting-item">
-      <strong>Still stuck?</strong>
-      <p>Email <a href="mailto:joe@joestechsolutions.com">joe@joestechsolutions.com</a> with a description
-      of the issue. Attach the install log from <code>~/.joes-ai/logs/</code> if available.</p>
-    </div>
-  </div>
-WELCOME_HTML_TROUBLE
 
   # ── Footer (dynamic install date) ──
   cat >> "${WELCOME_FILE}" << WELCOME_HTML_FOOTER
