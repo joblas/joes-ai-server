@@ -33,15 +33,29 @@ for arg in "$@"; do
 done
 
 # ── Detect pipe mode ─────────────────────────────────
-# Even inside main(), stdin may still be the pipe (not a terminal).
-# We can be interactive if /dev/tty is available (i.e. a real user terminal).
+# When piped via curl|bash, stdin is the pipe (not a terminal).
+# Test if we can actually open /dev/tty for real user input.
 INTERACTIVE=false
 if [ -t 0 ]; then
   INTERACTIVE=true
-elif [ -c /dev/tty ] 2>/dev/null; then
-  # Piped via curl|bash but terminal exists — we can prompt via /dev/tty
+elif ( exec < /dev/tty ) 2>/dev/null; then
+  # Piped via curl|bash but /dev/tty is reachable — we can prompt
   INTERACTIVE=true
 fi
+
+# Helper: read from the terminal, safe under set -e
+# Usage: tty_read VARNAME "prompt text"
+tty_read() {
+  local _var="$1" _prompt="$2"
+  local _reply=""
+  printf "%s" "$_prompt"
+  if [ -t 0 ]; then
+    read -r _reply || _reply=""
+  else
+    read -r _reply < /dev/tty || _reply=""
+  fi
+  eval "$_var=\$_reply"
+}
 
 # ── Colors ──────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
@@ -120,7 +134,7 @@ if [ -z "${DATA_ACTION}" ]; then
     echo "  1) Keep my data (recommended — only removes the server, not your chats)"
     echo "  2) Delete everything (removes all chats, settings permanently)"
     echo ""
-    read -r -p "Choose [1/2]: " choice < /dev/tty
+    tty_read choice "Choose [1/2]: "
     case "$choice" in
       2) DATA_ACTION="remove" ;;
       *) DATA_ACTION="keep" ;;
@@ -193,7 +207,7 @@ if [ -z "${OLLAMA_ACTION}" ]; then
     echo "  2) Remove Ollama and keep downloaded models"
     echo "  3) Remove Ollama AND all downloaded models (frees the most disk space)"
     echo ""
-    read -r -p "Choose [1/2/3]: " ollama_choice < /dev/tty
+    tty_read ollama_choice "Choose [1/2/3]: "
     case "$ollama_choice" in
       2) OLLAMA_ACTION="remove-keep-models" ;;
       3) OLLAMA_ACTION="remove" ;;
