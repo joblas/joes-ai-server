@@ -1473,6 +1473,10 @@ WELCOME_HTML_FOOTER
 install_prerequisites
 detect_hardware
 
+# Initialize model arrays (select_models populates them, but SKIP_MODELS may bypass it)
+MODELS_TO_PULL=()
+MODELS_DESCRIPTION=()
+
 if [ "${SKIP_MODELS:-false}" != "true" ]; then
   select_models
 fi
